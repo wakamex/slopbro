@@ -132,7 +132,7 @@ distributed as a single file with embedded assets.
 
 ### Building a single-file package
 
-The packaging tool requires Python 3.12 or newer (independently of the
+The packaging tool requires Python 3.8 or newer (independently of the
 launcher's runtime requirements). Generate a standalone file with:
 
 ```bash

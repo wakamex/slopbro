@@ -18,8 +18,9 @@ import base64
 import json
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional
 
-type AssetMap = dict[str, dict[str, str]]
+AssetMap = Dict[str, Dict[str, str]]
 
 BEGIN_MARKER = "# --- BEGIN EMBEDDED WWWROOT ---"
 END_MARKER = "# --- END EMBEDDED WWWROOT ---"
@@ -32,7 +33,7 @@ DEFAULT_FILES = [
 ]
 
 
-def _build_asset_map(wwwroot_dir: Path, file_list: list[str]) -> AssetMap:
+def _build_asset_map(wwwroot_dir: Path, file_list: List[str]) -> AssetMap:
     root = wwwroot_dir.resolve()
     payload: AssetMap = {}
     for rel_path in file_list:
@@ -79,7 +80,7 @@ def _write_text(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def parse_args(argv: list[str]) -> argparse.Namespace:
+def parse_args(argv: List[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Embed wwwroot files into slopbro.py")
     parser.add_argument(
         "--source",
@@ -112,7 +113,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return args
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv if argv is not None else sys.argv[1:])
 
     source_path = Path(args.source).resolve()

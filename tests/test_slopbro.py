@@ -545,7 +545,7 @@ class Python3CleanupTests(unittest.TestCase):
             client._read_http_headers()
 
 
-@unittest.skipIf(sys.version_info < (3, 12), "packaging tool requires Python 3.12+")
+@unittest.skipIf(sys.version_info < (3, 8), "packaging tool requires Python 3.8+")
 class PackageToolTests(unittest.TestCase):
     def setUp(self):
         self.repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
