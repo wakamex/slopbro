@@ -21,17 +21,18 @@ is_root() {
 SRC_APPID='com.webos.service.secondscreen.gateway'
 
 toast() {
-    [ -n "${logfile}" ] && debug "toasting: '${1}'"
+    if [ -n "${logfile:-}" ]; then
+        debug "toasting: '${1}'"
+    fi
 
     title="${SCRIPT_NAME}"
-    escape1="${1//\\/\\\\}"
-    escape="${escape1//\"/\\\"}"
+    escape="$(printf '%s' "${1}" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
     payload="$(printf '{"sourceId":"%s","message":"<h3>%s</h3>%s"}' "${SRC_APPID}" "${title}" "${escape}")"
 
     if is_root; then
-        luna-send -w 1000 -n 1 -a "${SRC_APPID}" 'luna://com.webos.notification/createToast' "${payload}" >/dev/null
+        luna-send -w 1000 -n 1 -a "${SRC_APPID}" 'luna://com.webos.notification/createToast' "${payload}" >/dev/null 2>&1 || true
     else
-        luna-send-pub -w 1000 -n 1 'luna://com.webos.notification/createToast' "${payload}" >/dev/null
+        luna-send-pub -w 1000 -n 1 'luna://com.webos.notification/createToast' "${payload}" >/dev/null 2>&1 || true
     fi
 }
 
@@ -83,9 +84,9 @@ add_exit_trap() {
 
 create_lockfile() {
     lockfile="${1}"
-    exec 200>"${lockfile}"
+    exec 9>"${lockfile}"
 
-    flock -x -n -- 200 || { echo '[!] Another instance of this script is currently running'; exit 2; }
+    flock -x -n -- 9 || { echo '[!] Another instance of this script is currently running'; exit 2; }
 
     add_exit_trap "rm -f -- '${lockfile}'"
 }
@@ -122,9 +123,15 @@ download_file() {
     fi
 
     if [ -n "${CURL_INSECURE}" ]; then
-        curl -k -L -o "${dl_path}" -- "${dl_url}"
+        curl -k -f -S -L -o "${dl_path}" -- "${dl_url}"
     else
-        curl -L -o "${dl_path}" -- "${dl_url}"
+        curl -f -S -L -o "${dl_path}" -- "${dl_url}"
+    fi
+
+    if [ ! -s "${dl_path}" ]; then
+        log "Downloaded file is empty: ${dl_path}"
+        rm -f -- "${dl_path}"
+        return 1
     fi
 }
 
@@ -147,14 +154,14 @@ verify_sd() {
         return 1
     fi
 
-    verify="$(openssl dgst -sha512 -verify "${sd_key}" -signature "${sd_sig}" "${sd_script}")"
+    verify="$(openssl dgst -sha512 -verify "${sd_key}" -signature "${sd_sig}" "${sd_script}" 2>&1)"
 
     case "${verify}" in
-    'Verified OK')
+    *'Verified OK'*)
         debug 'start-devmode.sh verification succeeded'
         return 0
     ;;
-    'Verification Failure')
+    *'Verification Failure'*|*'Verification failure'*)
         log 'start-devmode.sh verification failed: signature mismatch'
         return 1
     ;;
@@ -212,9 +219,9 @@ install_ipk() {
     luna-send -w 20000 -i 'luna://com.webos.appInstallService/dev/install' "${instpayload}" >"${fifopath}" &
     luna_pid="${!}"
 
-    if ! result="$(fgrep -m 1 -e 'installed' -e 'failed' -e 'Unknown method' -- "${fifopath}")"; then
+    if ! result="$(fgrep -m 1 -e 'installed' -e 'failed' -e 'Unknown method' -e '"returnValue":false' -e '"returnValue": false' -- "${fifopath}")"; then
         rm -f -- "${fifopath}"
-        error 'Install timed out'
+        error 'Install failed or timed out'
         exit 1
     fi
 
@@ -222,17 +229,17 @@ install_ipk() {
     rm -f -- "${fifopath}"
 
     case "${result}" in
-        *installed*) ;;
         *"Unknown method"*)
             error 'Installation failed (devmode_enabled not recognized)'
             debug "/dev/install response: '${result}'"
             return 1
         ;;
-        *failed*)
+        *failed*|*"not installed"*|*'"returnValue":false'*|*'"returnValue": false'*)
             error 'Installation failed'
             log "/dev/install response: '${result}'"
             exit 1
         ;;
+        *installed*) ;;
         *)
             error 'Installation failed for unknown reason'
             log "/dev/install response: '${result}'"
@@ -342,7 +349,7 @@ perform_root() {
 
     payload="$(printf '{"sourceId":"%s","message":"<h3>%s</h3>Rooting complete. You may need to reboot for Homebrew Channel to appear.<br>%s","buttons":[%s]}' "${SRC_APPID}" "${SCRIPT_NAME}" "${message}" "${buttons}")"
 
-    alert_response="$(luna-send -w 2000 -a "${SRC_APPID}" -n 1 'luna://com.webos.notification/createAlert' "${payload}")"
+    alert_response="$(luna-send -w 2000 -a "${SRC_APPID}" -n 1 'luna://com.webos.notification/createAlert' "${payload}" || true)"
 
     debug "/createAlert response: '${alert_response}'"
 
