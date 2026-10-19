@@ -93,11 +93,12 @@ The `--telnet` option starts `telnetd` in the payload. The `--leave-script`
 option prevents the payload from renaming an invalid `start-devmode.sh` before
 reboot.
 
-The `--download-dir` option sets the directory used for payload downloads.
-By default the payload tries `/media/internal/downloads`, then `/tmp`. Some
-newer firmware rejects `/media/internal/downloads` as an untrusted location;
-`--download-dir` can be used to select a different writable directory (for
-example, `/media/developer/temp` on some webOS 11+ devices).
+The `--download-dir` option sets the directory on the TV used for payload
+downloads. By default the payload tries `/media/internal/downloads`, then
+`/tmp`. Some newer firmware rejects `/media/internal/downloads` as an
+untrusted location; `--download-dir` can be used to select a different
+writable directory on the TV (for example, `/media/developer/temp` on some
+webOS 11+ devices). The value may not contain `;`.
 
 The `--asset-source` option allows you to specify where the script should look
 for assets (`auto`, `dir`, `embedded`).

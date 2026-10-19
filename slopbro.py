@@ -1225,7 +1225,10 @@ def _fake_service_path_arg(value):
 
 
 def _download_dir_arg(value):
-    return _require_path_arg(value)
+    value = _require_path_arg(value)
+    if ";" in value:
+        raise argparse.ArgumentTypeError("value must not contain ';'")
+    return value
 
 
 def main(argv=None):
@@ -1280,7 +1283,7 @@ def main(argv=None):
     )
     parser.add_argument(
         "--download-dir", metavar="<path>", type=_download_dir_arg,
-        help="directory for payload downloads (default: try /media/internal/downloads, then /tmp)",
+        help="directory on the TV for payload downloads (default: try /media/internal/downloads, then /tmp)",
     )
     parser.add_argument(
         "--test-server", choices=TEST_SERVER_MODES,

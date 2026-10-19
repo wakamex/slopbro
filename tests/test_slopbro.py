@@ -136,6 +136,7 @@ class CommandLineTests(unittest.TestCase):
             ["--download-dir=", "tv"],
             ["--download-dir", " ", "tv"],
             ["--download-dir", "a b", "tv"],
+            ["--download-dir", "/tmp/a;b", "tv"],
         ]
         invalid.extend([[option] for option in (
             "--local-ip", "--webos-version", "--asset-source", "--test-server",
