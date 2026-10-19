@@ -9,31 +9,38 @@ const html = fs.readFileSync(
   "utf8"
 );
 
-const start = html.indexOf("function retryWithNextDownloadDir");
-if (start < 0) {
-  console.error("retryWithNextDownloadDir not found");
-  process.exit(1);
-}
+function extractFunction(name) {
+  const marker = "function " + name + "(";
+  const start = html.indexOf(marker);
+  if (start < 0) {
+    console.error(name + " not found");
+    process.exit(1);
+  }
 
-let depth = 0;
-let end = -1;
-for (let i = start; i < html.length; i++) {
-  if (html[i] === "{") {
-    depth++;
-  } else if (html[i] === "}") {
-    depth--;
-    if (depth === 0) {
-      end = i;
-      break;
+  let depth = 0;
+  let end = -1;
+  for (let i = start; i < html.length; i++) {
+    if (html[i] === "{") {
+      depth++;
+    } else if (html[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
     }
   }
-}
-if (end < 0) {
-  console.error("could not find the end of retryWithNextDownloadDir");
-  process.exit(1);
+  if (end < 0) {
+    console.error("could not find the end of " + name);
+    process.exit(1);
+  }
+
+  return html.slice(start, end + 1);
 }
 
-const source = html.slice(start, end + 1);
+const retrySource = extractFunction("retryWithNextDownloadDir");
+const downloadFailedSource = extractFunction("downloadFailed");
+
 let failures = 0;
 
 function check(name, condition) {
@@ -50,7 +57,14 @@ function makeSandbox(dirs, index) {
     downloads: [],
     runService: function () {},
     retries: 0,
-    logStatus: function () {},
+    errors: [],
+    statuses: [],
+    logError: function (message) {
+      sandbox.errors.push(message);
+    },
+    logStatus: function (message) {
+      sandbox.statuses.push(message);
+    },
     currentDownloadDir: function () {
       return sandbox.downloadDirs[sandbox.downloadDirIndex];
     },
@@ -59,7 +73,8 @@ function makeSandbox(dirs, index) {
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(source, sandbox);
+  vm.runInContext(retrySource, sandbox);
+  vm.runInContext(downloadFailedSource, sandbox);
   return sandbox;
 }
 
@@ -95,6 +110,22 @@ sandbox = makeSandbox(["/a", "/b"], 1);
 check(
   "no retry past the last directory",
   sandbox.retryWithNextDownloadDir("path not in trusted locations") === false
+);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+sandbox.downloadFailed("autoroot.sh", "path not in trusted locations");
+check("download failure retries", sandbox.retries === 1);
+check(
+  "download failure does not stop after retrying",
+  sandbox.statuses.indexOf("stopped: download failed") < 0
+);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+sandbox.downloadFailed("autoroot.sh", "HTTP error 404");
+check("download failure does not retry unrelated errors", sandbox.retries === 0);
+check(
+  "download failure stops when no retry is possible",
+  sandbox.statuses.indexOf("stopped: download failed") >= 0
 );
 
 if (failures > 0) {
