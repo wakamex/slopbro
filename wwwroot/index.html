@@ -69,7 +69,7 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                 var rawScript = getQueryParam('script');
 
                 if (rawScript === null) {
-                    // XXX: This should be an error: script required
+                    // Required; validated before the download chain starts.
                     return '';
                 }
 
@@ -80,11 +80,17 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                 var rawFiles = getQueryParam('files');
 
                 if (rawFiles === null) {
-                    // XXX: This should be an error: files required
+                    // Required; validated before the download chain starts.
                     return [];
                 }
 
-                return rawFiles.split(';');
+                if (typeof rawFiles !== 'string') {
+                    return [];
+                }
+
+                return rawFiles.split(';').filter(function (name) {
+                    return name.length > 0;
+                });
             })();
 
             var fakeServicePath = (function () {
@@ -482,6 +488,12 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                 }
 
                 next();
+            }
+
+            if (!shellScriptName || files.length === 0) {
+                logError('missing required script or files query parameter');
+                logStatus('stopped: invalid payload URL');
+                return;
             }
 
             logDebug('hi');
