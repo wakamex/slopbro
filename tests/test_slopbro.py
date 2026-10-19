@@ -1,5 +1,6 @@
 import io
 import os
+import shutil
 import ssl
 import struct
 import subprocess
@@ -527,6 +528,21 @@ class PackageToolTests(unittest.TestCase):
             )
         self.assertEqual(result.returncode, 2)
         self.assertIn("not allowed with argument", result.stderr)
+
+
+class JavascriptTests(unittest.TestCase):
+    def test_download_dir_retry_logic(self):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not available")
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        script = os.path.join(repo_root, "tests", "js_retry_test.js")
+        result = subprocess.run(
+            [node, script], cwd=repo_root, capture_output=True, text=True,
+        )
+        self.assertEqual(
+            result.returncode, 0, result.stderr + result.stdout,
+        )
 
 
 if __name__ == "__main__":
