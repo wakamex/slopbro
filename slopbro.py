@@ -967,6 +967,7 @@ def run_test_payload(
     telnet=False,
     leave_script=False,
     download_dir=None,
+    no_client_check=False,
 ):
     """Serve the payload page and print its URL without pairing/launching.
 
@@ -1007,7 +1008,7 @@ def run_test_payload(
             all_files,
             allow_embedded_assets,
             allow_filesystem_fallback,
-            expected_client=resolve_client_ip(host),
+            expected_client=None if no_client_check else resolve_client_ip(host),
         )
         local_ip = guess_local_ip(
             target_host=host, local_ip_override=local_ip_override
@@ -1063,6 +1064,7 @@ def run(
     leave_script=False,
     app_override=None,
     download_dir=None,
+    no_client_check=False,
 ):
     secure = True
     port = PORT_TLS if secure else PORT_PLAIN
@@ -1108,7 +1110,7 @@ def run(
             all_files,
             allow_embedded_assets,
             allow_filesystem_fallback,
-            expected_client=resolve_client_ip(host),
+            expected_client=None if no_client_check else resolve_client_ip(host),
         )
         page_url = build_self_hosted_url(
             host,
@@ -1286,6 +1288,10 @@ def main(argv=None):
         help="directory on the TV for payload downloads (default: try /media/internal/downloads, then /tmp)",
     )
     parser.add_argument(
+        "--no-client-check", action="store_true",
+        help="credit payload file requests from any client, not just the TV address",
+    )
+    parser.add_argument(
         "--test-server", choices=TEST_SERVER_MODES,
         help="serve a connectivity response (simple) or payload without pairing",
     )
@@ -1318,6 +1324,7 @@ def main(argv=None):
                 telnet=args.telnet,
                 leave_script=args.leave_script,
                 download_dir=args.download_dir,
+                no_client_check=args.no_client_check,
             )
         else:
             run(
@@ -1332,6 +1339,7 @@ def main(argv=None):
                 leave_script=args.leave_script,
                 app_override=args.app,
                 download_dir=args.download_dir,
+                no_client_check=args.no_client_check,
             )
     except KeyboardInterrupt:
         sys.stderr.write("\n")

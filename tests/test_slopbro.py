@@ -25,7 +25,7 @@ class CommandLineTests(unittest.TestCase):
             local_ip_override=None, webos_version_override=None,
             curl_insecure=False, fake_service_path=slopbro.DEFAULT_FAKE_SERVICE_PATH,
             telnet=False, leave_script=False, app_override=None,
-            download_dir=None,
+            download_dir=None, no_client_check=False,
         )
         self.runners["run_test_connection"].assert_not_called()
         self.runners["run_test_payload"].assert_not_called()
@@ -45,7 +45,7 @@ class CommandLineTests(unittest.TestCase):
                 local_ip_override="192.168.1.2", webos_version_override="6.5",
                 curl_insecure=True, fake_service_path=slopbro.DEFAULT_FAKE_SERVICE_PATH,
                 telnet=False, leave_script=False, app_override=None,
-                download_dir=None,
+                download_dir=None, no_client_check=False,
             )
 
     def test_fake_service_path_options(self):
@@ -76,6 +76,7 @@ class CommandLineTests(unittest.TestCase):
             curl_insecure=False, fake_service_path=slopbro.DEFAULT_FAKE_SERVICE_PATH,
             telnet=True, leave_script=True,
             app_override="com.webos.app.tinybrowser", download_dir=None,
+            no_client_check=False,
         )
 
     def test_download_dir_option(self):
@@ -91,6 +92,18 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(
             self.runners["run_test_payload"].call_args.kwargs["download_dir"],
             "/tmp/payload",
+        )
+
+    def test_no_client_check_option(self):
+        self.assertEqual(slopbro.main([
+            "--no-client-check", "tv.local",
+        ]), 0)
+        self.assertTrue(self.runners["run"].call_args.kwargs["no_client_check"])
+        self.assertEqual(slopbro.main([
+            "--test-server=payload", "--no-client-check",
+        ]), 0)
+        self.assertTrue(
+            self.runners["run_test_payload"].call_args.kwargs["no_client_check"],
         )
 
     def test_test_server_modes(self):
@@ -109,6 +122,7 @@ class CommandLineTests(unittest.TestCase):
                 local_ip_override="192.168.1.2", curl_insecure=True,
                 fake_service_path=slopbro.DEFAULT_FAKE_SERVICE_PATH,
                 telnet=False, leave_script=False, download_dir=None,
+                no_client_check=False,
             )
         self.runners["run"].assert_not_called()
 
