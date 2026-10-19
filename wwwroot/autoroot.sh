@@ -226,11 +226,12 @@ install_ipk() {
         -e '"returnValue":false' -e '"returnValue": false' \
         -e '"failed":true' -e '"failed": true' \
         -e '"status":"failed"' -e '"status": "failed"' \
+        -e '"state":"failed"' -e '"state": "failed"' \
         -e 'not installed' \
         -e '"installed":false' -e '"installed": false' \
         -e '"status":"installed"' -e '"status": "installed"' \
+        -e '"state":"installed"' -e '"state": "installed"' \
         -e '"installed":true' -e '"installed": true' \
-        -e '"installed"' \
         -- "${fifopath}")"; then
         rm -f -- "${fifopath}"
         error 'Install failed or timed out'
@@ -238,6 +239,7 @@ install_ipk() {
     fi
 
     kill -TERM "${luna_pid}" 2>/dev/null || true
+    luna_pid=''
     rm -f -- "${fifopath}"
 
     if command -v tr >/dev/null 2>&1; then
@@ -254,12 +256,12 @@ install_ipk() {
             debug "/dev/install response: '${result}'"
             return 1
         ;;
-        *'"failed":true'*|*'"failed": true'*|*'"returnvalue":false'*|*'"returnvalue": false'*|*'"status":"failed"'*|*'"status": "failed"'*|*'"installed":false'*|*'"installed": false'*|*"not installed"*)
+        *'"failed":true'*|*'"failed": true'*|*'"returnvalue":false'*|*'"returnvalue": false'*|*'"status":"failed"'*|*'"status": "failed"'*|*'"state":"failed"'*|*'"state": "failed"'*|*'"installed":false'*|*'"installed": false'*|*"not installed"*)
             error 'Installation failed'
             log "/dev/install response: '${result}'"
             exit 1
         ;;
-        *'"status":"installed"'*|*'"status": "installed"'*|*'"installed":true'*|*'"installed": true'*|*'"installed"'*)
+        *'"status":"installed"'*|*'"status": "installed"'*|*'"state":"installed"'*|*'"state": "installed"'*|*'"installed":true'*|*'"installed": true'*)
         ;;
         *)
             error 'Installation failed for unknown reason'
