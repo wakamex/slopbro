@@ -528,8 +528,8 @@ class Python3CleanupTests(unittest.TestCase):
 
     def test_websocket_rejects_oversized_frame(self):
         header = (
-            struct.pack("!BB", 0x81, 126)
-            + struct.pack("!H", slopbro.MAX_FRAME_BYTES + 1)
+            struct.pack("!BB", 0x81, 127)
+            + struct.pack("!Q", slopbro.MAX_FRAME_BYTES + 1)
         )
         sock = Mock()
         sock.recv.side_effect = [header]
