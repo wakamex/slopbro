@@ -230,8 +230,7 @@ install_ipk() {
         -e '"installed":false' -e '"installed": false' \
         -e '"status":"installed"' -e '"status": "installed"' \
         -e '"installed":true' -e '"installed": true' \
-        -e 'installation failed' -e 'failed to install' -e 'install failed' \
-        -e 'installed' \
+        -e '"installed"' \
         -- "${fifopath}")"; then
         rm -f -- "${fifopath}"
         error 'Install failed or timed out'
@@ -243,6 +242,8 @@ install_ipk() {
 
     if command -v tr >/dev/null 2>&1; then
         result_lc="$(printf '%s' "${result}" | tr '[:upper:]' '[:lower:]')"
+    elif command -v awk >/dev/null 2>&1; then
+        result_lc="$(printf '%s' "${result}" | awk '{print tolower($0)}')"
     else
         result_lc="${result}"
     fi
@@ -258,14 +259,8 @@ install_ipk() {
             log "/dev/install response: '${result}'"
             exit 1
         ;;
-        *'"status":"installed"'*|*'"status": "installed"'*|*'"installed":true'*|*'"installed": true'*)
+        *'"status":"installed"'*|*'"status": "installed"'*|*'"installed":true'*|*'"installed": true'*|*'"installed"'*)
         ;;
-        *"installation failed"*|*"failed to install"*|*"install failed"*)
-            error 'Installation failed'
-            log "/dev/install response: '${result}'"
-            exit 1
-        ;;
-        *installed*) ;;
         *)
             error 'Installation failed for unknown reason'
             log "/dev/install response: '${result}'"
