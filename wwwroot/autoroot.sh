@@ -11,6 +11,8 @@ SCRIPT_DIR="${SCRIPT_DIR:-$(dirname -- "${0}")}"
 DEBUG="${DEBUG:-}"
 IPK_SRC="${IPK_SRC:-"${SCRIPT_DIR}/hbchannel.ipk"}"
 IPK_URL='https://github.com/webosbrew/webos-homebrew-channel/releases/download/v0.7.3/org.webosbrew.hbchannel_0.7.3_all.ipk'
+# Set to an empty string to skip verification (e.g., for a custom IPK).
+IPK_SHA256="${IPK_SHA256:-d10bf3c753551d7c72fb7a92b20fcd2317e502a220ac668ba8e76f6ea78b363c}"
 SCRIPT_NAME='SlopBro'
 
 is_root() {
@@ -434,6 +436,22 @@ else
         error "Failed to download Homebrew Channel IPK from ${IPK_URL}"
         exit 1
     fi
+fi
+
+if [ -n "${IPK_SHA256}" ]; then
+    if ! command -v sha256sum >/dev/null 2>&1; then
+        error 'sha256sum is not available; cannot verify the Homebrew Channel IPK'
+        exit 1
+    fi
+
+    actual_sha256="$(sha256sum "${ipk}" | cut -d ' ' -f 1)"
+
+    if [ "${actual_sha256}" != "${IPK_SHA256}" ]; then
+        error "Homebrew Channel IPK checksum mismatch (expected ${IPK_SHA256}, got ${actual_sha256})"
+        exit 1
+    fi
+
+    debug 'Homebrew Channel IPK checksum verified'
 fi
 
 perform_root
