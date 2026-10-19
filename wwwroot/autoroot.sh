@@ -12,7 +12,7 @@ DEBUG="${DEBUG:-}"
 IPK_SRC="${IPK_SRC:-"${SCRIPT_DIR}/hbchannel.ipk"}"
 IPK_URL='https://github.com/webosbrew/webos-homebrew-channel/releases/download/v0.7.3/org.webosbrew.hbchannel_0.7.3_all.ipk'
 # Set to an empty string to skip verification (e.g., for a custom IPK).
-IPK_SHA256="${IPK_SHA256:-d10bf3c753551d7c72fb7a92b20fcd2317e502a220ac668ba8e76f6ea78b363c}"
+IPK_SHA256="${IPK_SHA256-d10bf3c753551d7c72fb7a92b20fcd2317e502a220ac668ba8e76f6ea78b363c}"
 SCRIPT_NAME='SlopBro'
 
 is_root() {
