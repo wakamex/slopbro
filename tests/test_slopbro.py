@@ -150,6 +150,11 @@ class CommandLineTests(unittest.TestCase):
         for runner in self.runners.values():
             runner.assert_not_called()
 
+    def test_keyboard_interrupt(self):
+        self.runners["run"].side_effect = KeyboardInterrupt
+        with patch.object(slopbro, "log"):
+            self.assertEqual(slopbro.main(["tv.local"]), 130)
+
     def test_default_argv(self):
         with patch("sys.argv", ["slopbro.py", "tv.local"]):
             self.assertEqual(slopbro.main(), 0)

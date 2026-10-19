@@ -1298,37 +1298,42 @@ def main(argv=None):
     if args.test_server is None and args.host is None:
         parser.error("<tv-ip-or-host> is required unless --test-server is used")
 
-    if args.test_server == TEST_SERVER_SIMPLE:
-        run_test_connection(
-            args.host,
-            local_ip_override=args.local_ip,
-        )
-    elif args.test_server == TEST_SERVER_PAYLOAD:
-        run_test_payload(
-            args.host,
-            debug=args.debug,
-            asset_source=args.asset_source,
-            local_ip_override=args.local_ip,
-            curl_insecure=args.curl_insecure,
-            fake_service_path=args.fake_service_path,
-            telnet=args.telnet,
-            leave_script=args.leave_script,
-            download_dir=args.download_dir,
-        )
-    else:
-        run(
-            args.host,
-            debug=args.debug,
-            asset_source=args.asset_source,
-            local_ip_override=args.local_ip,
-            webos_version_override=args.webos_version,
-            curl_insecure=args.curl_insecure,
-            fake_service_path=args.fake_service_path,
-            telnet=args.telnet,
-            leave_script=args.leave_script,
-            app_override=args.app,
-            download_dir=args.download_dir,
-        )
+    try:
+        if args.test_server == TEST_SERVER_SIMPLE:
+            run_test_connection(
+                args.host,
+                local_ip_override=args.local_ip,
+            )
+        elif args.test_server == TEST_SERVER_PAYLOAD:
+            run_test_payload(
+                args.host,
+                debug=args.debug,
+                asset_source=args.asset_source,
+                local_ip_override=args.local_ip,
+                curl_insecure=args.curl_insecure,
+                fake_service_path=args.fake_service_path,
+                telnet=args.telnet,
+                leave_script=args.leave_script,
+                download_dir=args.download_dir,
+            )
+        else:
+            run(
+                args.host,
+                debug=args.debug,
+                asset_source=args.asset_source,
+                local_ip_override=args.local_ip,
+                webos_version_override=args.webos_version,
+                curl_insecure=args.curl_insecure,
+                fake_service_path=args.fake_service_path,
+                telnet=args.telnet,
+                leave_script=args.leave_script,
+                app_override=args.app,
+                download_dir=args.download_dir,
+            )
+    except KeyboardInterrupt:
+        sys.stderr.write("\n")
+        log("interrupted")
+        return 130
     return 0
 
 
