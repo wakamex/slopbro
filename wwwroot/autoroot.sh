@@ -28,7 +28,7 @@ toast() {
     fi
 
     title="${SCRIPT_NAME}"
-    escape="$(printf '%s' "${1}" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+    escape="$(printf '%s' "${1}" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')" || escape="${1}"
     payload="$(printf '{"sourceId":"%s","message":"<h3>%s</h3>%s"}' "${SRC_APPID}" "${title}" "${escape}")"
 
     if is_root; then
