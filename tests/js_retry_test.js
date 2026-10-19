@@ -38,8 +38,12 @@ function extractFunction(name) {
   return html.slice(start, end + 1);
 }
 
-const retrySource = extractFunction("retryWithNextDownloadDir");
-const downloadFailedSource = extractFunction("downloadFailed");
+const sources = [
+  "retryWithNextDownloadDir",
+  "downloadFailed",
+  "runService",
+  "requestDownload",
+].map(extractFunction);
 
 let failures = 0;
 
@@ -55,10 +59,28 @@ function makeSandbox(dirs, index) {
     downloadDirs: dirs,
     downloadDirIndex: index,
     downloads: [],
-    runService: function () {},
     retries: 0,
+    cancelled: false,
+    completed: 0,
     errors: [],
     statuses: [],
+    baseUrl: "",
+    shellScriptName: "autoroot.sh",
+    fakeServicePath: null,
+    optTelnet: false,
+    optDebug: false,
+    optCurlInsecure: false,
+    optLeaveScript: false,
+    optNoIpkChecksum: false,
+    DOWNLOAD_TIMEOUT_MS: 30000,
+    SERVICE_TIMEOUT_MS: 30000,
+    serviceResponse: JSON.stringify({ returnValue: true }),
+    downloadResponses: [],
+    setTimeout: function () {
+      return 0;
+    },
+    clearTimeout: function () {},
+    logDebug: function () {},
     logError: function (message) {
       sandbox.errors.push(message);
     },
@@ -71,10 +93,47 @@ function makeSandbox(dirs, index) {
     runDownloads: function () {
       sandbox.retries++;
     },
+    parse: function (message) {
+      try {
+        return JSON.parse(message);
+      } catch (err) {
+        return null;
+      }
+    },
+    checkValidResponse: function () {
+      return true;
+    },
+    getErrorText: function (response) {
+      if (response && typeof response.errorText === "string" && response.errorText) {
+        return response.errorText;
+      }
+      return "unknown error";
+    },
   };
+
+  sandbox.bridge = {
+    onservicecallback: null,
+    cancel: function () {
+      sandbox.cancelled = true;
+    },
+    call: function (uri) {
+      if (uri.indexOf("jsserver") >= 0) {
+        sandbox.bridge.onservicecallback(sandbox.serviceResponse);
+        return;
+      }
+      sandbox.downloadResponses.forEach(function (response) {
+        sandbox.bridge.onservicecallback(response);
+      });
+    },
+  };
+  sandbox.createServiceBridge = function () {
+    return sandbox.bridge;
+  };
+
   vm.createContext(sandbox);
-  vm.runInContext(retrySource, sandbox);
-  vm.runInContext(downloadFailedSource, sandbox);
+  sources.forEach(function (source) {
+    vm.runInContext(source, sandbox);
+  });
   return sandbox;
 }
 
@@ -126,6 +185,74 @@ check("download failure does not retry unrelated errors", sandbox.retries === 0)
 check(
   "download failure stops when no retry is possible",
   sandbox.statuses.indexOf("stopped: download failed") >= 0
+);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+sandbox.downloadResponses = [
+  JSON.stringify({
+    completed: true,
+    httpStatus: 200,
+    aborted: false,
+    interrupted: false,
+  }),
+];
+sandbox.requestDownload("autoroot.sh", function () {
+  sandbox.completed++;
+});
+check("completion as the first message succeeds", sandbox.completed === 1);
+check("download bridge cancelled", sandbox.cancelled);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+sandbox.downloadResponses = [
+  JSON.stringify({ returnValue: true }),
+  JSON.stringify({
+    completed: true,
+    httpStatus: 200,
+    aborted: false,
+    interrupted: false,
+  }),
+];
+sandbox.requestDownload("autoroot.sh", function () {
+  sandbox.completed++;
+});
+check("start followed by completion succeeds", sandbox.completed === 1);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+sandbox.downloadResponses = [
+  JSON.stringify({
+    returnValue: false,
+    errorText: "path not in trusted locations",
+  }),
+];
+sandbox.requestDownload("autoroot.sh", function () {
+  sandbox.completed++;
+});
+check("download start failure does not complete", sandbox.completed === 0);
+check("download start failure retries", sandbox.retries === 1);
+check("download start failure cancels the bridge", sandbox.cancelled);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+sandbox.serviceResponse = JSON.stringify({
+  returnValue: false,
+  errorText: "path not in trusted locations",
+});
+sandbox.runService();
+check("service failure retries", sandbox.retries === 1);
+check("service failure cancels the bridge", sandbox.cancelled);
+check(
+  "service failure does not stop after retrying",
+  sandbox.statuses.indexOf("stopped: service failed to start") < 0
+);
+
+sandbox = makeSandbox(["/a"], 0);
+sandbox.serviceResponse = JSON.stringify({
+  returnValue: false,
+  errorText: "path not in trusted locations",
+});
+sandbox.runService();
+check(
+  "service failure stops when no retry is possible",
+  sandbox.statuses.indexOf("stopped: service failed to start") >= 0
 );
 
 if (failures > 0) {
