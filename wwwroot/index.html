@@ -263,6 +263,18 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                 return downloadDirs[downloadDirIndex];
             }
 
+            function retryWithNextDownloadDir(message) {
+                if ((downloadDirIndex + 1 >= downloadDirs.length) ||
+                    !/trusted|path not in|permission|not authorized|access denied|security/i.test(String(message))) {
+                    return false;
+                }
+
+                downloadDirIndex++;
+                logStatus('retrying with download dir ' + currentDownloadDir());
+                runDownloads(downloads, runService);
+                return true;
+            }
+
             function runService() {
                 logDebug('entered runService()');
 
@@ -314,10 +326,7 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                         // Some firmware rejects downloads/scripts under
                         // /media/internal as untrusted; retry with the next
                         // configured directory.
-                        if ((downloadDirIndex + 1 < downloadDirs.length) && /trusted location|path not in/i.test(errorText + ' ' + message)) {
-                            downloadDirIndex++;
-                            logStatus('retrying with download dir ' + currentDownloadDir());
-                            runDownloads(downloads, runService);
+                        if (retryWithNextDownloadDir(errorText + ' ' + message)) {
                             return;
                         }
 
@@ -338,6 +347,9 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
 
             function downloadFailed(file, message) {
                 logError('error downloading ' + file + ': ' + message);
+                if (retryWithNextDownloadDir(message)) {
+                    return;
+                }
                 logStatus('stopped: download failed');
             }
 
