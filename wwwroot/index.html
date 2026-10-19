@@ -64,6 +64,7 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
             var optTelnet = getQueryParam('telnet') !== null;
             var optCurlInsecure = getQueryParam('curl-insecure') !== null;
             var optLeaveScript = getQueryParam('leave-script') !== null;
+            var optNoIpkChecksum = getQueryParam('no-ipk-checksum') !== null;
 
             var shellScriptName = (function () {
                 var rawScript = getQueryParam('script');
@@ -301,6 +302,7 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                 if (optDebug) args.push('--debug');
                 if (optCurlInsecure) args.push('--curl-insecure');
                 if (optLeaveScript) args.push('--leave-script');
+                if (optNoIpkChecksum) args.push('--no-ipk-checksum');
 
                 var requestPayload = { inputParams: args.join(' ') };
                 logDebug('request payload: ' + JSON.stringify(requestPayload));

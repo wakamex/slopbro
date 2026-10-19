@@ -382,6 +382,9 @@ while [ "${#}" -gt 0 ]; do
         '--curl-insecure')
             CURL_INSECURE='arg'
         ;;
+        '--no-ipk-checksum')
+            IPK_SHA256=''
+        ;;
         *)
             echo "Unknown option '${1}'"
             exit 1

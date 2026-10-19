@@ -839,6 +839,7 @@ def build_self_hosted_url(
     telnet=False,
     leave_script=False,
     download_dirs=(),
+    no_ipk_checksum=False,
 ):
     local_ip = local_ip_override or local_ip_for_remote(tv_host)
     params = [
@@ -857,6 +858,8 @@ def build_self_hosted_url(
         params.append("fake-service-path=" + quote(fake_service_path, safe="/"))
     if download_dirs:
         params.append("download-dirs=" + quote(";".join(download_dirs), safe=";"))
+    if no_ipk_checksum:
+        params.append("no-ipk-checksum")
     return "http://%s:%d/%s?%s" % (
         local_ip,
         server_port,
@@ -968,6 +971,7 @@ def run_test_payload(
     leave_script=False,
     download_dir=None,
     no_client_check=False,
+    no_ipk_checksum=False,
 ):
     """Serve the payload page and print its URL without pairing/launching.
 
@@ -1023,6 +1027,7 @@ def run_test_payload(
             telnet=telnet,
             leave_script=leave_script,
             download_dirs=[download_dir] if download_dir else DEFAULT_DOWNLOAD_DIRS,
+            no_ipk_checksum=no_ipk_checksum,
         )
     except Exception as exc:
         die("could not start self-hosted page server: %s" % exc)
@@ -1065,6 +1070,7 @@ def run(
     app_override=None,
     download_dir=None,
     no_client_check=False,
+    no_ipk_checksum=False,
 ):
     secure = True
     port = PORT_TLS if secure else PORT_PLAIN
@@ -1122,6 +1128,7 @@ def run(
             telnet=telnet,
             leave_script=leave_script,
             download_dirs=[download_dir] if download_dir else DEFAULT_DOWNLOAD_DIRS,
+            no_ipk_checksum=no_ipk_checksum,
         )
     except Exception as exc:
         die("could not start self-hosted page server: %s" % exc)
@@ -1292,6 +1299,10 @@ def main(argv=None):
         help="credit payload file requests from any client, not just the TV address",
     )
     parser.add_argument(
+        "--no-ipk-checksum", action="store_true",
+        help="skip verification of the Homebrew Channel IPK checksum",
+    )
+    parser.add_argument(
         "--test-server", choices=TEST_SERVER_MODES,
         help="serve a connectivity response (simple) or payload without pairing",
     )
@@ -1325,6 +1336,7 @@ def main(argv=None):
                 leave_script=args.leave_script,
                 download_dir=args.download_dir,
                 no_client_check=args.no_client_check,
+                no_ipk_checksum=args.no_ipk_checksum,
             )
         else:
             run(
@@ -1340,6 +1352,7 @@ def main(argv=None):
                 app_override=args.app,
                 download_dir=args.download_dir,
                 no_client_check=args.no_client_check,
+                no_ipk_checksum=args.no_ipk_checksum,
             )
     except KeyboardInterrupt:
         sys.stderr.write("\n")

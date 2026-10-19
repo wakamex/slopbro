@@ -52,7 +52,7 @@ which is executed with root privileges. It is responsible for launching
 Run the script with Python 3, passing the IP address of your TV:
 
 ```bash
-python3 slopbro.py [--debug] [--curl-insecure] [--fake-service-path <PATH>|--no-fake-service-path] [--local-ip <LOCAL IP>] [--webos-version <VERSION>] [--app <APP ID>] [--telnet] [--leave-script] [--download-dir <PATH>] [--no-client-check] [--asset-source <auto|dir|embedded>] [--test-server <simple|payload>] [<TV IP ADDRESS>]
+python3 slopbro.py [--debug] [--curl-insecure] [--fake-service-path <PATH>|--no-fake-service-path] [--local-ip <LOCAL IP>] [--webos-version <VERSION>] [--app <APP ID>] [--telnet] [--leave-script] [--download-dir <PATH>] [--no-client-check] [--no-ipk-checksum] [--asset-source <auto|dir|embedded>] [--test-server <simple|payload>] [<TV IP ADDRESS>]
 ```
 
 Use `python3 slopbro.py --help` for the full option reference.
@@ -104,6 +104,10 @@ The `--no-client-check` option credits payload file requests from any client
 instead of only the resolved TV address. Use it if the TV is multi-homed or
 behind NAT and the run times out with "ignoring request for ... from
 unexpected client" messages.
+
+The `--no-ipk-checksum` option skips verification of the Homebrew Channel IPK.
+By default the payload verifies the SHA-256 of the bundled/downloaded 0.7.3
+IPK; use this only when intentionally supplying a different IPK.
 
 The `--asset-source` option allows you to specify where the script should look
 for assets (`auto`, `dir`, `embedded`).
