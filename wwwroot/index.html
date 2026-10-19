@@ -224,9 +224,35 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                 return null;
             }
 
-            var downloadDir = '/media/internal/downloads';
+            var downloadDirs = (function () {
+                var rawDirs = getQueryParam('download-dirs');
+
+                if (rawDirs === null) {
+                    return ['/media/internal/downloads'];
+                }
+
+                if (typeof rawDirs !== 'string') {
+                    return ['/media/internal/downloads'];
+                }
+
+                var parts = rawDirs.split(';').filter(function (dir) {
+                    return dir.length > 0;
+                });
+
+                if (parts.length === 0) {
+                    return ['/media/internal/downloads'];
+                }
+
+                return parts;
+            })();
+
+            var downloadDirIndex = 0;
             var DOWNLOAD_TIMEOUT_MS = 30000;
             var SERVICE_TIMEOUT_MS = 30000;
+
+            function currentDownloadDir() {
+                return downloadDirs[downloadDirIndex];
+            }
 
             function runService() {
                 logDebug('entered runService()');
@@ -240,8 +266,8 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                     logError('timed out waiting for the service to respond');
                 }, SERVICE_TIMEOUT_MS);
 
-                var shellScriptPath = downloadDir + '/' + shellScriptName;
-                var args = ['--', '/tmp/run-js-service-no-cgroup', '^_~', downloadDir, shellScriptPath];
+                var shellScriptPath = currentDownloadDir() + '/' + shellScriptName;
+                var args = ['--', '/tmp/run-js-service-no-cgroup', '^_~', currentDownloadDir(), shellScriptPath];
                 if (fakeServicePath !== null) {
                     // Straightforward way to get the fake service path into position to fool LG's patch attempt
                     args.unshift('a', 'b', 'c', fakeServicePath);
@@ -271,7 +297,20 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                     }
 
                     if (response.returnValue !== true) {
-                        logError('service failed to start: ' + getErrorText(response));
+                        var errorText = getErrorText(response);
+                        logError('service failed to start: ' + errorText);
+
+                        // Some firmware rejects downloads/scripts under
+                        // /media/internal as untrusted; retry with the next
+                        // configured directory.
+                        if ((downloadDirIndex + 1 < downloadDirs.length) && /trusted location|path not in/i.test(errorText)) {
+                            downloadDirIndex++;
+                            logStatus('retrying with download dir ' + currentDownloadDir());
+                            runDownloads(downloads, runService);
+                            return;
+                        }
+
+                        logStatus('stopped: service failed to start');
                         return;
                     }
 
@@ -416,7 +455,7 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                     'luna://com.webos.service.downloadmanager/download',
                     JSON.stringify({
                         target: baseUrl + file,
-                        targetDir: downloadDir,
+                        targetDir: currentDownloadDir(),
                         targetFilename: file,
                         subscribe: true
                     })

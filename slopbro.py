@@ -77,6 +77,13 @@ TEST_SERVER_MODES = (TEST_SERVER_SIMPLE, TEST_SERVER_PAYLOAD)
 # Should exist on all targeted webOS versions.
 DEFAULT_FAKE_SERVICE_PATH = "/usr/palm/services/com.palm.service.devmode"
 
+# Tried in order by the payload. /media/internal/downloads is rejected as an
+# untrusted location on some newer firmware; /tmp is a broad fallback.
+DEFAULT_DOWNLOAD_DIRS = [
+    "/media/internal/downloads",
+    "/tmp",
+]
+
 # --- BEGIN EMBEDDED WWWROOT ---
 EMBEDDED_WWWROOT = {}
 # --- END EMBEDDED WWWROOT ---
@@ -851,6 +858,7 @@ def build_self_hosted_url(
     fake_service_path=DEFAULT_FAKE_SERVICE_PATH,
     telnet=False,
     leave_script=False,
+    download_dirs=(),
 ):
     local_ip = local_ip_override or local_ip_for_remote(tv_host)
     params = [
@@ -867,6 +875,8 @@ def build_self_hosted_url(
         params.append("leave-script")
     if fake_service_path:
         params.append("fake-service-path=" + quote(fake_service_path, safe="/"))
+    if download_dirs:
+        params.append("download-dirs=" + quote(";".join(download_dirs), safe=";"))
     return "http://%s:%d/%s?%s" % (
         local_ip,
         server_port,
@@ -976,6 +986,7 @@ def run_test_payload(
     fake_service_path=DEFAULT_FAKE_SERVICE_PATH,
     telnet=False,
     leave_script=False,
+    download_dir=None,
 ):
     """Serve the payload page and print its URL without pairing/launching.
 
@@ -1028,6 +1039,7 @@ def run_test_payload(
             fake_service_path=fake_service_path,
             telnet=telnet,
             leave_script=leave_script,
+            download_dirs=[download_dir] if download_dir else DEFAULT_DOWNLOAD_DIRS,
         )
     except Exception as exc:
         die("could not start self-hosted page server: %s" % exc)
@@ -1068,6 +1080,7 @@ def run(
     telnet=False,
     leave_script=False,
     app_override=None,
+    download_dir=None,
 ):
     secure = True
     port = PORT_TLS if secure else PORT_PLAIN
@@ -1122,6 +1135,7 @@ def run(
             fake_service_path=fake_service_path,
             telnet=telnet,
             leave_script=leave_script,
+            download_dirs=[download_dir] if download_dir else DEFAULT_DOWNLOAD_DIRS,
         )
     except Exception as exc:
         die("could not start self-hosted page server: %s" % exc)
@@ -1214,12 +1228,20 @@ def run(
                 pass
 
 
-def _fake_service_path_arg(value):
+def _require_path_arg(value):
     if not value.strip():
         raise argparse.ArgumentTypeError("value must not be empty")
     if any(ch.isspace() or ord(ch) < 0x20 for ch in value):
         raise argparse.ArgumentTypeError("value must not contain whitespace or control characters")
     return value
+
+
+def _fake_service_path_arg(value):
+    return _require_path_arg(value)
+
+
+def _download_dir_arg(value):
+    return _require_path_arg(value)
 
 
 def main(argv=None):
@@ -1273,6 +1295,10 @@ def main(argv=None):
         help="do not rename an invalid start-devmode.sh",
     )
     parser.add_argument(
+        "--download-dir", metavar="<path>", type=_download_dir_arg,
+        help="directory for payload downloads (default: try /media/internal/downloads, then /tmp)",
+    )
+    parser.add_argument(
         "--test-server", choices=TEST_SERVER_MODES,
         help="serve a connectivity response (simple) or payload without pairing",
     )
@@ -1303,6 +1329,7 @@ def main(argv=None):
             fake_service_path=args.fake_service_path,
             telnet=args.telnet,
             leave_script=args.leave_script,
+            download_dir=args.download_dir,
         )
     else:
         run(
@@ -1316,6 +1343,7 @@ def main(argv=None):
             telnet=args.telnet,
             leave_script=args.leave_script,
             app_override=args.app,
+            download_dir=args.download_dir,
         )
     return 0
 
