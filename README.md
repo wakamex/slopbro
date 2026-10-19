@@ -52,7 +52,7 @@ which is executed with root privileges. It is responsible for launching
 Run the script with Python 3, passing the IP address of your TV:
 
 ```bash
-python slopbro.py [--debug] [--curl-insecure] [--fake-service-path <PATH>|--no-fake-service-path] [--local-ip <LOCAL IP>] [--webos-version <VERSION>] [--asset-source <auto|dir|embedded>] [--test-server <simple|payload>] [<TV IP ADDRESS>]
+python3 slopbro.py [--debug] [--curl-insecure] [--fake-service-path <PATH>|--no-fake-service-path] [--local-ip <LOCAL IP>] [--webos-version <VERSION>] [--app <APP ID>] [--telnet] [--leave-script] [--asset-source <auto|dir|embedded>] [--test-server <simple|payload>] [<TV IP ADDRESS>]
 ```
 
 Use `python3 slopbro.py --help` for the full option reference.
@@ -77,12 +77,21 @@ disable the bypass and omit the `fake-service-path` query parameter.
 The `--local-ip` option allows you to specify the local IP address manually,
 which can be useful if the script guesses the wrong IP address.
 
-The `--webos-version` option specifies the TV's webOS version and limits the
-target apps to those configured for that major version. Dotted versions such
-as `6.5` are accepted and treated as major version `6`.
+The `--webos-version` option specifies the TV's internal webOS major version
+and limits the target apps to those configured for that version. Dotted
+versions such as `6.5` are accepted and treated as major version `6`.
+Use the internal version, not the marketing name: for example, "webOS 25" is
+internal webOS `10`.
 
 *The version is not currently auto-detected, so you may need to specify it if
 the selected app fails.*
+
+The `--app` option overrides target app selection with a specific app ID. The
+app must be present in the candidate list for the selected webOS version.
+
+The `--telnet` option starts `telnetd` in the payload. The `--leave-script`
+option prevents the payload from renaming an invalid `start-devmode.sh` before
+reboot.
 
 The `--asset-source` option allows you to specify where the script should look
 for assets (`auto`, `dir`, `embedded`).
