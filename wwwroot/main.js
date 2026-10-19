@@ -25,11 +25,15 @@ function escapeHtml(text) {
     .replace(/>/g, "&gt;");
 }
 
+function cleanMessage(text) {
+  return String(text).replace(/[\r\n]+/g, " ").slice(0, 500);
+}
+
 function notifyFailure(message) {
   try {
     const payload = JSON.stringify({
       sourceId: "com.webos.service.secondscreen.gateway",
-      message: "<h3>SlopBro</h3>Rooting failed: " + escapeHtml(message),
+      message: "<h3>SlopBro</h3>Rooting failed: " + escapeHtml(cleanMessage(message)),
       buttons: [{ label: "OK" }],
     });
     child_process.execFileSync("luna-send", [
