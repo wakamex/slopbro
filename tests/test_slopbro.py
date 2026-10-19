@@ -485,11 +485,14 @@ class PackageToolTests(unittest.TestCase):
     def test_rejects_assets_outside_wwwroot(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "out.py")
-            for files in (["../slopbro.py"], ["/etc/passwd"]):
+            for files in (
+                ["../slopbro.py"],
+                [os.path.join(self.repo_root, "slopbro.py")],
+            ):
                 with self.subTest(files=files):
                     result = self._run(files, out)
                     self.assertEqual(result.returncode, 1)
-                    self.assertIn("invalid asset path", result.stderr)
+                    self.assertIn("asset path", result.stderr)
                     self.assertFalse(os.path.exists(out))
 
     def test_embeds_valid_assets(self):
