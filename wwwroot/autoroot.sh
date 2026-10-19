@@ -219,7 +219,7 @@ install_ipk() {
     luna-send -w 20000 -i 'luna://com.webos.appInstallService/dev/install' "${instpayload}" >"${fifopath}" &
     luna_pid="${!}"
 
-    if ! result="$(fgrep -m 1 -e 'installed' -e 'failed' -e 'Unknown method' -e '"returnValue":false' -e '"returnValue": false' -- "${fifopath}")"; then
+    if ! result="$(fgrep -i -m 1 -e 'installed' -e 'failed' -e 'Unknown method' -e '"returnValue":false' -e '"returnValue": false' -- "${fifopath}")"; then
         rm -f -- "${fifopath}"
         error 'Install failed or timed out'
         exit 1
