@@ -526,6 +526,24 @@ class Python3CleanupTests(unittest.TestCase):
         client = slopbro.WebSocket(sock)
         self.assertEqual(client.recv_text(), "real")
 
+    def test_websocket_rejects_oversized_frame(self):
+        header = (
+            struct.pack("!BB", 0x81, 126)
+            + struct.pack("!H", slopbro.MAX_FRAME_BYTES + 1)
+        )
+        sock = Mock()
+        sock.recv.side_effect = [header]
+        client = slopbro.WebSocket(sock)
+        with self.assertRaises(slopbro.WebSocketError):
+            client._read_frame()
+
+    def test_websocket_rejects_oversized_headers(self):
+        sock = Mock()
+        sock.recv.return_value = b"A" * (slopbro.MAX_HTTP_HEADER_BYTES + 1)
+        client = slopbro.WebSocket(sock)
+        with self.assertRaises(slopbro.WebSocketError):
+            client._read_http_headers()
+
 
 @unittest.skipIf(sys.version_info < (3, 12), "packaging tool requires Python 3.12+")
 class PackageToolTests(unittest.TestCase):

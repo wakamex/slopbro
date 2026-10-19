@@ -96,6 +96,10 @@ STATUS_WAIT_TIMEOUT = 120.0
 
 STATUS_PATH = "/__slopbro_status"
 
+# Bounds for the minimal SSAP client.
+MAX_HTTP_HEADER_BYTES = 64 * 1024
+MAX_FRAME_BYTES = 16 * 1024 * 1024
+
 # Manifest distilled from the reference clients. Broad permission set so the
 # launcher works across firmware versions; the TV grants what it recognizes.
 DEFAULT_MANIFEST = {
@@ -209,6 +213,8 @@ class WebSocket:
             if not chunk:
                 raise WebSocketError("connection closed during handshake")
             self._recv_buf += chunk
+            if len(self._recv_buf) > MAX_HTTP_HEADER_BYTES:
+                raise WebSocketError("HTTP header too large")
         header_bytes, self._recv_buf = self._recv_buf.split(b"\r\n\r\n", 1)
         return header_bytes.decode("latin-1")
 
@@ -290,6 +296,8 @@ class WebSocket:
             length = struct.unpack("!H", self._recv_exact(2))[0]
         elif length == 127:
             length = struct.unpack("!Q", self._recv_exact(8))[0]
+        if length > MAX_FRAME_BYTES:
+            raise WebSocketError("frame too large")
         mask = self._recv_exact(4) if masked else None
         payload = self._recv_exact(length) if length else b""
         if mask:
