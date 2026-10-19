@@ -70,8 +70,12 @@ function run() {
   } finally {
     log("result:", status);
 
-    // XXX: Should we bail out or let the "service" continue?
-    //process.exit(0);
+    if (status !== "success") {
+      process.exitCode = 1;
+    }
+
+    // Leave the service process running; failures are reported through the
+    // alert, the log, and the nonzero exit code.
   }
 }
 
