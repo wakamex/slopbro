@@ -266,7 +266,7 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
 
             function retryWithNextDownloadDir(message) {
                 if ((downloadDirIndex + 1 >= downloadDirs.length) ||
-                    !/trusted|path not in|permission|not authorized|access denied|security/i.test(String(message))) {
+                    !/untrusted|trusted location|path not in|not allowed|permission|access denied|security check/i.test(String(message))) {
                     return false;
                 }
 
@@ -324,6 +324,7 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                     if (response.returnValue !== true) {
                         var errorText = getErrorText(response);
                         logError('service failed to start: ' + errorText);
+                        bridge.cancel();
 
                         // Some firmware rejects downloads/scripts under
                         // /media/internal as untrusted; retry with the next
