@@ -43,16 +43,24 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                 var query = location.search.substring(1);
                 var vars = query.split('&');
                 for (var i = 0; i < vars.length; i++) {
-                    var pair = vars[i].split('=');
-                    if (pair[0] === name) {
+                    var raw = vars[i];
+                    var equals = raw.indexOf('=');
+                    var key = equals < 0 ? raw : raw.substring(0, equals);
+                    try {
+                        key = decodeURIComponent(key);
+                    } catch (err) {
+                        // Keep the raw key if it is not valid percent-encoding.
+                    }
+                    if (key === name) {
                         // Returns undefined if there's no value
-                        if (pair.length < 2) {
+                        if (equals < 0) {
                             return undefined;
                         }
+                        var value = raw.substring(equals + 1);
                         try {
-                            return decodeURIComponent(pair[1]);
+                            return decodeURIComponent(value);
                         } catch (err) {
-                            return pair[1];
+                            return value;
                         }
                     }
                 }

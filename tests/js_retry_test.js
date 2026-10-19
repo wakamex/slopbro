@@ -39,6 +39,7 @@ function extractFunction(name) {
 }
 
 const sources = [
+  "getQueryParam",
   "retryWithNextDownloadDir",
   "downloadFailed",
   "runService",
@@ -65,6 +66,7 @@ function makeSandbox(dirs, index) {
     errors: [],
     statuses: [],
     statusBeacons: [],
+    location: { search: "" },
     baseUrl: "",
     shellScriptName: "autoroot.sh",
     fakeServicePath: null,
@@ -141,7 +143,14 @@ function makeSandbox(dirs, index) {
   return sandbox;
 }
 
-let sandbox = makeSandbox(["/a", "/b"], 0);
+let sandbox = makeSandbox([], 0);
+sandbox.location = { search: "?x=a=b&debug&y=%26&%7A=encoded" };
+check("query keeps '=' in values", sandbox.getQueryParam("x") === "a=b");
+check("bare query param is undefined", sandbox.getQueryParam("debug") === undefined);
+check("query decodes values", sandbox.getQueryParam("y") === "&");
+check("query decodes keys", sandbox.getQueryParam("z") === "encoded");
+
+sandbox = makeSandbox(["/a", "/b"], 0);
 check(
   "untrusted path retries",
   sandbox.retryWithNextDownloadDir("path not in trusted locations") === true
