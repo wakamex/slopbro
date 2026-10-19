@@ -90,7 +90,8 @@ create_lockfile() {
 
     flock -x -n -- 9 || { echo '[!] Another instance of this script is currently running'; exit 2; }
 
-    add_exit_trap "rm -f -- '${lockfile}'"
+    # The lock file is intentionally left in place; unlinking it would allow a
+    # third instance to lock a new inode while another still holds the old one.
 }
 
 check_sd_verify() {
@@ -218,7 +219,7 @@ install_ipk() {
     log "Installing ${ipkpath}..."
     toast 'Installing...'
 
-    luna-send -w 20000 -i 'luna://com.webos.appInstallService/dev/install' "${instpayload}" >"${fifopath}" &
+    luna-send -w 20000 -i 'luna://com.webos.appInstallService/dev/install' "${instpayload}" >"${fifopath}" 9>&- &
     luna_pid="${!}"
 
     if ! result="$(fgrep -i -m 1 \
@@ -274,7 +275,7 @@ install_ipk() {
 }
 
 elevate_hbchannel() {
-    if ! /media/developer/apps/usr/palm/services/org.webosbrew.hbchannel.service/elevate-service >"${tempdir}/elevate.log"; then
+    if ! /media/developer/apps/usr/palm/services/org.webosbrew.hbchannel.service/elevate-service >"${tempdir}/elevate.log" 9>&-; then
         error 'Elevation failed'
         exit 1
     fi
@@ -412,7 +413,7 @@ create_lockfile '/tmp/autoroot.lock'
 
 [ -n "${DEBUG}" ] && toast 'Script is running!'
 
-[ -n "${TELNET}" ] && { telnetd -l sh || echo "[!] Failed to start telnetd (${?})"; }
+[ -n "${TELNET}" ] && { telnetd -l sh 9>&- || echo "[!] Failed to start telnetd (${?})"; }
 
 umask 022
 
@@ -435,6 +436,19 @@ if [ -n "${DEBUG}" ]; then
     rm -rf -- "${loglink}"
     ln -s -- "${logfile}" "${loglink}"
 fi
+
+cleanup_run() {
+    if [ -n "${luna_pid:-}" ]; then
+        kill -TERM "${luna_pid}" 2>/dev/null || true
+        luna_pid=''
+    fi
+
+    if [ -z "${DEBUG}" ]; then
+        rm -rf -- "${tempdir}"
+    fi
+}
+
+add_exit_trap "cleanup_run"
 
 log 'hi'
 
