@@ -225,11 +225,12 @@ install_ipk() {
         -e 'Unknown method' \
         -e '"returnValue":false' -e '"returnValue": false' \
         -e '"failed":true' -e '"failed": true' \
-        -e 'failed' \
+        -e '"status":"failed"' -e '"status": "failed"' \
         -e 'not installed' \
         -e '"installed":false' -e '"installed": false' \
         -e '"status":"installed"' -e '"status": "installed"' \
         -e '"installed":true' -e '"installed": true' \
+        -e 'installation failed' -e 'failed to install' -e 'install failed' \
         -e 'installed' \
         -- "${fifopath}")"; then
         rm -f -- "${fifopath}"
@@ -240,7 +241,11 @@ install_ipk() {
     kill -TERM "${luna_pid}" 2>/dev/null || true
     rm -f -- "${fifopath}"
 
-    result_lc="$(printf '%s' "${result}" | tr '[:upper:]' '[:lower:]')"
+    if command -v tr >/dev/null 2>&1; then
+        result_lc="$(printf '%s' "${result}" | tr '[:upper:]' '[:lower:]')"
+    else
+        result_lc="${result}"
+    fi
 
     case "${result_lc}" in
         *"unknown method"*)
@@ -248,14 +253,14 @@ install_ipk() {
             debug "/dev/install response: '${result}'"
             return 1
         ;;
-        *'"failed":true'*|*'"failed": true'*|*'"returnvalue":false'*|*'"returnvalue": false'*|*'"installed":false'*|*'"installed": false'*|*"not installed"*)
+        *'"failed":true'*|*'"failed": true'*|*'"returnvalue":false'*|*'"returnvalue": false'*|*'"status":"failed"'*|*'"status": "failed"'*|*'"installed":false'*|*'"installed": false'*|*"not installed"*)
             error 'Installation failed'
             log "/dev/install response: '${result}'"
             exit 1
         ;;
         *'"status":"installed"'*|*'"status": "installed"'*|*'"installed":true'*|*'"installed": true'*)
         ;;
-        *failed*)
+        *"installation failed"*|*"failed to install"*|*"install failed"*)
             error 'Installation failed'
             log "/dev/install response: '${result}'"
             exit 1
