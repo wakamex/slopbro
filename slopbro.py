@@ -526,41 +526,6 @@ def launch_app(client, app_id, params):
     return resp.get("payload") or {}
 
 
-def get_webos_version(client):
-    """Query the TV's webOS version over SSAP and return it as a string.
-
-    Uses 'major_ver'/'minor_ver' from getCurrentSWInformation to build a
-    "<major>.<minor>" version string. Returns None if the query fails or
-    the response doesn't contain usable version fields.
-
-    TODO: use the detected version to choose which target app(s) to try.
-    """
-    try:
-        resp = client.request(
-            "ssap://com.webos.service.update/getCurrentSWInformation",
-            {},
-            timeout=8.0,
-        )
-    except SSAPError as exc:
-        log("warning: could not query webOS version (%s)" % exc)
-        return None
-    if resp.get("type") == "error":
-        log(
-            "warning: getCurrentSWInformation denied (%s)"
-            % resp.get("error", "unknown")
-        )
-        return None
-    payload = resp.get("payload") or {}
-    major_ver = payload.get("major_ver")
-    minor_ver = payload.get("minor_ver")
-    if major_ver and minor_ver:
-        return "%s.%s" % (major_ver, minor_ver)
-    if major_ver:
-        return str(major_ver)
-    log("warning: getCurrentSWInformation response missing version fields")
-    return None
-
-
 def local_ip_for_remote(remote_host, remote_port=80):
     """Choose a LAN-reachable local IPv4 for a given remote host."""
     remote_ip = socket.gethostbyname(remote_host)
@@ -749,10 +714,6 @@ class RequestedFilesTracker:
     def missing_files(self):
         with self._lock:
             return sorted(self._tracked - self._seen)
-
-    def total_files(self):
-        with self._lock:
-            return len(self._tracked)
 
 
 def make_tracking_handler(
