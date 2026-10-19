@@ -11,7 +11,36 @@ function log() {
   const args = Array.prototype.slice.call(arguments);
   const message = args.join(" ");
   console.log(message);
-  fs.appendFileSync("/tmp/slopbro.log", message + "\n");
+  try {
+    fs.appendFileSync("/tmp/slopbro.log", message + "\n");
+  } catch (err) {
+    // Logging must never prevent the payload from running.
+  }
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function notifyFailure(message) {
+  try {
+    const payload = JSON.stringify({
+      sourceId: "com.webos.service.secondscreen.gateway",
+      message: "<h3>SlopBro</h3>Rooting failed: " + escapeHtml(message),
+      buttons: [{ label: "OK" }],
+    });
+    child_process.execFileSync("luna-send", [
+      "-w", "2000", "-n", "1",
+      "-a", "com.webos.service.secondscreen.gateway",
+      "luna://com.webos.notification/createAlert",
+      payload,
+    ]);
+  } catch (err) {
+    // Notifications are best-effort.
+  }
 }
 
 function run() {
@@ -36,6 +65,8 @@ function run() {
     status = "success";
   } catch (err) {
     status = "error: " + err.message;
+    process.exitCode = 1;
+    notifyFailure(err.message);
   } finally {
     log("result:", status);
 
