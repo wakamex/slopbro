@@ -47,7 +47,7 @@ def _build_asset_map(wwwroot_dir: Path, file_list: list[str]) -> AssetMap:
         if not abs_path.is_file():
             raise RuntimeError(f"missing asset: {abs_path}")
         encoded = base64.b64encode(abs_path.read_bytes()).decode("ascii")
-        payload[rel_path] = {
+        payload[rel.as_posix()] = {
             "encoding": "base64",
             "data": encoded,
         }
@@ -121,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.files is not None and not args.files:
         raise RuntimeError("--files requires at least one file")
     files = args.files if args.files is not None else list(DEFAULT_FILES)
+    files = [Path(name).as_posix() for name in files]
 
     missing_defaults = [name for name in DEFAULT_FILES if name not in files]
     if missing_defaults:

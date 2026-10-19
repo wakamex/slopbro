@@ -499,6 +499,16 @@ class PackageToolTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue(os.path.isfile(out))
 
+    def test_normalizes_dot_prefixes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "out.py")
+            result = self._run(["./index.html"], out)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with open(out, "r", encoding="utf-8") as fh:
+                text = fh.read()
+            self.assertIn('"index.html"', text)
+            self.assertNotIn('"./index.html"', text)
+
     def test_out_and_in_place_are_exclusive(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = subprocess.run(
