@@ -221,7 +221,16 @@ install_ipk() {
     luna-send -w 20000 -i 'luna://com.webos.appInstallService/dev/install' "${instpayload}" >"${fifopath}" &
     luna_pid="${!}"
 
-    if ! result="$(fgrep -i -m 1 -e 'installed' -e 'failed' -e 'Unknown method' -e '"returnValue":false' -e '"returnValue": false' -- "${fifopath}")"; then
+    if ! result="$(fgrep -i -m 1 \
+        -e 'Unknown method' \
+        -e '"returnValue":false' -e '"returnValue": false' \
+        -e '"failed":true' -e '"failed": true' \
+        -e 'not installed' \
+        -e '"installed":false' -e '"installed": false' \
+        -e '"status":"installed"' -e '"status": "installed"' \
+        -e '"installed":true' -e '"installed": true' \
+        -e 'installed' \
+        -- "${fifopath}")"; then
         rm -f -- "${fifopath}"
         error 'Install failed or timed out'
         exit 1
@@ -236,12 +245,12 @@ install_ipk() {
             debug "/dev/install response: '${result}'"
             return 1
         ;;
-        *failed*|*"not installed"*|*'"returnValue":false'*|*'"returnValue": false'*)
+        *'"failed":true'*|*'"failed": true'*|*'"returnValue":false'*|*'"returnValue": false'*|*'"installed":false'*|*'"installed": false'*|*"not installed"*)
             error 'Installation failed'
             log "/dev/install response: '${result}'"
             exit 1
         ;;
-        *installed*) ;;
+        *'"status":"installed"'*|*'"status": "installed"'*|*'"installed":true'*|*'"installed": true'*|*installed*) ;;
         *)
             error 'Installation failed for unknown reason'
             log "/dev/install response: '${result}'"
