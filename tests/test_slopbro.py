@@ -499,6 +499,22 @@ class PackageToolTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue(os.path.isfile(out))
 
+    def test_out_and_in_place_are_exclusive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    sys.executable, self.tool,
+                    "--source", "slopbro.py",
+                    "--wwwroot", "wwwroot",
+                    "--out", os.path.join(tmp, "out.py"),
+                    "--in-place",
+                    "--files", "index.html",
+                ],
+                cwd=self.repo_root, capture_output=True, text=True,
+            )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("not allowed with argument", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

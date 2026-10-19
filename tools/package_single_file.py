@@ -91,12 +91,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="wwwroot",
         help="path to wwwroot directory",
     )
-    parser.add_argument(
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument(
         "--out",
         default="dist/slopbro_packed.py",
         help="output package file path",
     )
-    parser.add_argument(
+    output.add_argument(
         "--in-place",
         action="store_true",
         help="write the package back to the --source file",
