@@ -89,6 +89,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="output package file path",
     )
     parser.add_argument(
+        "--in-place",
+        action="store_true",
+        help="write the package back to the --source file",
+    )
+    parser.add_argument(
         "--files",
         nargs="*",
         default=None,
@@ -103,10 +108,17 @@ def main(argv: list[str] | None = None) -> int:
 
     source_path = Path(args.source).resolve()
     wwwroot_dir = Path(args.wwwroot).resolve()
-    output_path = Path(args.out).resolve()
-    files = args.files if args.files else list(DEFAULT_FILES)
-    if not files:
-        raise RuntimeError("no files selected to embed")
+    output_path = source_path if args.in_place else Path(args.out).resolve()
+    if args.files is not None and not args.files:
+        raise RuntimeError("--files requires at least one file")
+    files = args.files if args.files is not None else list(DEFAULT_FILES)
+
+    missing_defaults = [name for name in DEFAULT_FILES if name not in files]
+    if missing_defaults:
+        print(
+            "warning: not embedding %s" % ", ".join(missing_defaults),
+            file=sys.stderr,
+        )
 
     source_text = _read_text(source_path)
     embedded = _build_asset_map(wwwroot_dir, files)
