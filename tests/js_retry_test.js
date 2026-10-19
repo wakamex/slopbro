@@ -79,6 +79,12 @@ check(
 
 sandbox = makeSandbox(["/a", "/b"], 0);
 check(
+  "not authorized also retries",
+  sandbox.retryWithNextDownloadDir("not authorized") === true
+);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+check(
   "unrelated errors do not retry",
   sandbox.retryWithNextDownloadDir("HTTP error 404") === false
 );
