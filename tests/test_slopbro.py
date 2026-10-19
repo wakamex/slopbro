@@ -2,6 +2,8 @@ import io
 import os
 import ssl
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import Mock, call, patch
@@ -444,6 +446,42 @@ class Python3CleanupTests(unittest.TestCase):
         sock.recv.side_effect = [data]
         client = slopbro.WebSocket(sock)
         self.assertEqual(client.recv_text(), "real")
+
+
+@unittest.skipIf(sys.version_info < (3, 12), "packaging tool requires Python 3.12+")
+class PackageToolTests(unittest.TestCase):
+    def setUp(self):
+        self.repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.tool = os.path.join(self.repo_root, "tools", "package_single_file.py")
+
+    def _run(self, files, out):
+        return subprocess.run(
+            [
+                sys.executable, self.tool,
+                "--source", "slopbro.py",
+                "--wwwroot", "wwwroot",
+                "--out", out,
+                "--files", *files,
+            ],
+            cwd=self.repo_root, capture_output=True, text=True,
+        )
+
+    def test_rejects_assets_outside_wwwroot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "out.py")
+            for files in (["../slopbro.py"], ["/etc/passwd"]):
+                with self.subTest(files=files):
+                    result = self._run(files, out)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn("invalid asset path", result.stderr)
+                    self.assertFalse(os.path.exists(out))
+
+    def test_embeds_valid_assets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "out.py")
+            result = self._run(["index.html"], out)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(os.path.isfile(out))
 
 
 if __name__ == "__main__":

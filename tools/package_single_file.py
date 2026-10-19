@@ -33,9 +33,17 @@ DEFAULT_FILES = [
 
 
 def _build_asset_map(wwwroot_dir: Path, file_list: list[str]) -> AssetMap:
+    root = wwwroot_dir.resolve()
     payload: AssetMap = {}
     for rel_path in file_list:
-        abs_path = wwwroot_dir / rel_path
+        rel = Path(rel_path)
+        if rel.is_absolute() or ".." in rel.parts:
+            raise RuntimeError(f"invalid asset path: {rel_path}")
+        abs_path = (root / rel).resolve()
+        try:
+            abs_path.relative_to(root)
+        except ValueError:
+            raise RuntimeError(f"asset path escapes wwwroot: {rel_path}")
         if not abs_path.is_file():
             raise RuntimeError(f"missing asset: {abs_path}")
         encoded = base64.b64encode(abs_path.read_bytes()).decode("ascii")
