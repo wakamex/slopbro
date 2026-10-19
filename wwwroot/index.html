@@ -270,6 +270,8 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
 
                 var serviceTimer = setTimeout(function () {
                     logError('timed out waiting for the service to respond');
+                    logStatus('stopped: service did not respond');
+                    bridge.cancel();
                 }, SERVICE_TIMEOUT_MS);
 
                 var shellScriptPath = currentDownloadDir() + '/' + shellScriptName;
@@ -380,13 +382,14 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                 armTimeout();
 
                 bridge.onservicecallback = function (message) {
-                    armTimeout();
                     logDebug('received message: ' + message);
 
                     if (complete) {
                         logError('received unexpected message after download completion: ' + message);
                         return;
                     }
+
+                    armTimeout();
 
                     var response = parse(message, 'download response');
                     if (response === null) {
