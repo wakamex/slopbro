@@ -580,6 +580,16 @@ def local_ip_for_remote(remote_host, remote_port=80):
     raise RuntimeError("could not determine local IPv4 address")
 
 
+def resolve_client_ip(host):
+    """Resolve the expected TV address, or None if it cannot be resolved."""
+    if not host:
+        return None
+    try:
+        return socket.gethostbyname(host)
+    except (OSError, UnicodeError):
+        return None
+
+
 def guess_local_ip(target_host=None, local_ip_override=None):
     """Resolve the local IPv4 to advertise, without necessarily knowing a target.
 
@@ -748,11 +758,12 @@ class RequestedFilesTracker:
 def make_tracking_handler(
     root_dir,
     tracker,
-    tracked_files,
+    served_files,
     allow_embedded_assets,
     allow_filesystem_fallback,
+    expected_client=None,
 ):
-    tracked = set(tracked_files)
+    served = set(served_files)
 
     class TrackingHTTPRequestHandler(SimpleHTTPRequestHandler):
         def _requested_rel_path(self):
@@ -781,6 +792,12 @@ def make_tracking_handler(
             return io.BytesIO(data)
 
         def _mark_served_file(self, rel_path):
+            if expected_client is not None and self.client_address[0] != expected_client:
+                log(
+                    "ignoring request for %s from unexpected client %s"
+                    % (rel_path, self.client_address[0])
+                )
+                return
             marked, seen_count, total_count = tracker.mark_seen(rel_path)
             if marked:
                 log(
@@ -794,7 +811,7 @@ def make_tracking_handler(
 
         def send_head(self):
             rel_path = self._requested_rel_path()
-            if rel_path is None or rel_path not in tracked:
+            if rel_path is None or rel_path not in served:
                 self.send_error(404, "File not found")
                 return None
 
@@ -816,19 +833,21 @@ def make_tracking_handler(
 def start_http_server(
     root_dir,
     tracker,
-    tracked_files,
+    served_files,
     allow_embedded_assets,
     allow_filesystem_fallback,
     bind_host="0.0.0.0",
     preferred_port=8080,
+    expected_client=None,
 ):
     """Start a tiny static file server rooted at root_dir."""
     handler = make_tracking_handler(
         root_dir,
         tracker,
-        tracked_files,
+        served_files,
         allow_embedded_assets,
         allow_filesystem_fallback,
+        expected_client=expected_client,
     )
     return _start_http_server(handler, bind_host, preferred_port)
 
@@ -1001,7 +1020,8 @@ def run_test_payload(
             "wrong (recommended: pass the TV's IP address)"
         )
 
-    tracked_files = required_files()
+    all_files = required_files()
+    tracked_files = [name for name in all_files if name != ENTRY_PAGE]
     wwwroot_dir = None
     asset_source_used = None
     allow_embedded_assets = True
@@ -1014,7 +1034,7 @@ def run_test_payload(
             asset_source_used,
             allow_embedded_assets,
             allow_filesystem_fallback,
-        ) = resolve_asset_root(asset_source, tracked_files)
+        ) = resolve_asset_root(asset_source, all_files)
     except RuntimeError as exc:
         die("%s" % exc)
 
@@ -1023,9 +1043,10 @@ def run_test_payload(
         http_server = start_http_server(
             wwwroot_dir,
             tracker,
-            tracked_files,
+            all_files,
             allow_embedded_assets,
             allow_filesystem_fallback,
+            expected_client=resolve_client_ip(host),
         )
         local_ip = guess_local_ip(
             target_host=host, local_ip_override=local_ip_override
@@ -1087,7 +1108,8 @@ def run(
     scheme = "wss" if secure else "ws"
     log("connecting to %s://%s:%d" % (scheme, host, port))
 
-    tracked_files = required_files()
+    all_files = required_files()
+    tracked_files = [name for name in all_files if name != ENTRY_PAGE]
     wwwroot_dir = None
     asset_source_used = None
     allow_embedded_assets = True
@@ -1105,7 +1127,7 @@ def run(
             allow_filesystem_fallback,
         ) = resolve_asset_root(
             asset_source,
-            tracked_files,
+            all_files,
         )
     except RuntimeError as exc:
         die("%s" % exc)
@@ -1122,9 +1144,10 @@ def run(
         http_server = start_http_server(
             wwwroot_dir,
             tracker,
-            tracked_files,
+            all_files,
             allow_embedded_assets,
             allow_filesystem_fallback,
+            expected_client=resolve_client_ip(host),
         )
         page_url = build_self_hosted_url(
             host,

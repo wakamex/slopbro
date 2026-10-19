@@ -228,6 +228,21 @@ class HandlerTests(unittest.TestCase):
         self.assertEqual(headers["Pragma"], "no-cache")
         self.assertEqual(result.read(), b"data")
 
+    def test_tracker_ignores_unexpected_client(self):
+        tracker = slopbro.RequestedFilesTracker(["package.json"])
+        handler_class = slopbro.make_tracking_handler(
+            None, tracker, ["index.html", "package.json"], True, False,
+            expected_client="192.168.1.50",
+        )
+        handler = object.__new__(handler_class)
+        with patch.object(slopbro, "log"):
+            handler.client_address = ("10.0.0.9", 1234)
+            handler._mark_served_file("package.json")
+            self.assertFalse(tracker.wait_for_all(0.01))
+            handler.client_address = ("192.168.1.50", 1234)
+            handler._mark_served_file("package.json")
+        self.assertTrue(tracker.wait_for_all(0.01))
+
     def test_connection_logging(self):
         handler = object.__new__(slopbro.make_test_connection_handler())
         handler.client_address = ("127.0.0.1", 12345)
@@ -340,6 +355,13 @@ class Python3CleanupTests(unittest.TestCase):
             with patch.object(slopbro, "_route_selected_local_ip", return_value="127.0.0.1"):
                 with self.assertRaises(RuntimeError):
                     slopbro.local_ip_for_remote("tv.local")
+
+    def test_resolve_client_ip(self):
+        with patch.object(slopbro.socket, "gethostbyname", return_value="192.168.1.50"):
+            self.assertEqual(slopbro.resolve_client_ip("tv.local"), "192.168.1.50")
+        with patch.object(slopbro.socket, "gethostbyname", side_effect=OSError("no")):
+            self.assertIsNone(slopbro.resolve_client_ip("tv.local"))
+        self.assertIsNone(slopbro.resolve_client_ip(None))
 
     def test_register_falls_back_without_stale_key(self):
         client = Mock()
