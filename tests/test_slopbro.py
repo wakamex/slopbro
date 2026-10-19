@@ -1,9 +1,11 @@
 import io
 import os
 import ssl
+import struct
 import tempfile
 import unittest
 from unittest.mock import Mock, call, patch
+from urllib.parse import parse_qs, urlsplit
 
 import slopbro
 
@@ -22,6 +24,7 @@ class CommandLineTests(unittest.TestCase):
             "tv.local", debug=False, asset_source="auto",
             local_ip_override=None, webos_version_override=None,
             curl_insecure=False, fake_service_path=slopbro.DEFAULT_FAKE_SERVICE_PATH,
+            telnet=False, leave_script=False, app_override=None,
         )
         self.runners["run_test_connection"].assert_not_called()
         self.runners["run_test_payload"].assert_not_called()
@@ -40,6 +43,7 @@ class CommandLineTests(unittest.TestCase):
                 "tv.local", debug=True, asset_source="dir",
                 local_ip_override="192.168.1.2", webos_version_override="6.5",
                 curl_insecure=True, fake_service_path=slopbro.DEFAULT_FAKE_SERVICE_PATH,
+                telnet=False, leave_script=False, app_override=None,
             )
 
     def test_fake_service_path_options(self):
@@ -59,6 +63,19 @@ class CommandLineTests(unittest.TestCase):
         ]), 0)
         self.assertEqual(self.runners["run_test_payload"].call_args.kwargs["fake_service_path"], "")
 
+    def test_payload_and_app_options(self):
+        self.assertEqual(slopbro.main([
+            "--telnet", "--leave-script", "--app=com.webos.app.tinybrowser",
+            "tv.local",
+        ]), 0)
+        self.runners["run"].assert_called_with(
+            "tv.local", debug=False, asset_source="auto",
+            local_ip_override=None, webos_version_override=None,
+            curl_insecure=False, fake_service_path=slopbro.DEFAULT_FAKE_SERVICE_PATH,
+            telnet=True, leave_script=True,
+            app_override="com.webos.app.tinybrowser",
+        )
+
     def test_test_server_modes(self):
         for host in (None, "tv.local"):
             positional = [host] if host else []
@@ -74,6 +91,7 @@ class CommandLineTests(unittest.TestCase):
                 host, debug=True, asset_source="embedded",
                 local_ip_override="192.168.1.2", curl_insecure=True,
                 fake_service_path=slopbro.DEFAULT_FAKE_SERVICE_PATH,
+                telnet=False, leave_script=False,
             )
         self.runners["run"].assert_not_called()
 
@@ -96,10 +114,12 @@ class CommandLineTests(unittest.TestCase):
             ["--webos-version=", "tv"], ["--webos-version", " ", "tv"],
             ["--fake-service-path=", "tv"],
             ["--fake-service-path", " ", "tv"],
+            ["--fake-service-path", "a b", "tv"],
+            ["--fake-service-path", "a\tb", "tv"],
         ]
         invalid.extend([[option] for option in (
             "--local-ip", "--webos-version", "--asset-source", "--test-server",
-            "--fake-service-path",
+            "--fake-service-path", "--app",
         )])
         for argv in invalid:
             with patch("sys.stderr", new_callable=io.StringIO) as output:
@@ -163,10 +183,30 @@ class HandlerTests(unittest.TestCase):
             ("/index%2Ehtml?debug", "index.html"),
             ("/caf%C3%A9", "caf\u00e9"),
             ("/%ED%A0%80", "\ud800"),
+            ("/%FF", None),
+            ("/%C3", None),
             ("../missing", None),
         ):
             handler.path = path
             self.assertEqual(handler._requested_rel_path(), expected)
+
+    def test_payload_headers_disable_caching(self):
+        handler_class = slopbro.make_tracking_handler(
+            None, slopbro.RequestedFilesTracker(slopbro.required_files()),
+            slopbro.required_files(), True, False,
+        )
+        handler = object.__new__(handler_class)
+        handler.send_response = Mock()
+        handler.send_header = Mock()
+        handler.end_headers = Mock()
+        handler.guess_type = Mock(return_value="text/html")
+        result = handler._send_bytes("index.html", b"data")
+        headers = {c.args[0]: c.args[1] for c in handler.send_header.call_args_list}
+        self.assertEqual(
+            headers["Cache-Control"], "no-store, no-cache, must-revalidate",
+        )
+        self.assertEqual(headers["Pragma"], "no-cache")
+        self.assertEqual(result.read(), b"data")
 
     def test_connection_logging(self):
         handler = object.__new__(slopbro.make_test_connection_handler())
@@ -250,6 +290,94 @@ class Python3CleanupTests(unittest.TestCase):
                         slopbro.save_client_key("tv", "unsaved-key")
                     logger.assert_called_once()
                     self.assertIn("could not save client key", logger.call_args[0][0])
+
+    def test_key_path_sanitizes_host(self):
+        with patch.object(slopbro.os, "getcwd", return_value="/keys"):
+            self.assertEqual(slopbro.key_path("tv.local"), "/keys/tv.local.key")
+            self.assertEqual(slopbro.key_path("../evil"), "/keys/evil.key")
+            self.assertEqual(slopbro.key_path("..\\evil"), "/keys/evil.key")
+
+    def test_self_hosted_url_encoding(self):
+        url = slopbro.build_self_hosted_url(
+            "192.168.1.50", 8080,
+            local_ip_override="192.168.1.10",
+            fake_service_path="/x&debug#f y",
+            telnet=True, leave_script=True,
+        )
+        query = parse_qs(urlsplit(url).query, keep_blank_values=True)
+        self.assertEqual(query["script"], ["autoroot.sh"])
+        self.assertEqual(query["files"], ["package.json;main.js"])
+        self.assertEqual(query["fake-service-path"], ["/x&debug#f y"])
+        self.assertIn("telnet", query)
+        self.assertIn("leave-script", query)
+
+    def test_local_ip_rejects_loopback_only(self):
+        with patch.object(slopbro.socket, "gethostbyname", return_value="192.168.1.50"):
+            with patch.object(slopbro, "_route_selected_local_ip", return_value="127.0.0.1"):
+                with self.assertRaises(RuntimeError):
+                    slopbro.local_ip_for_remote("tv.local")
+
+    def test_register_falls_back_without_stale_key(self):
+        client = Mock()
+        client.register.side_effect = [
+            slopbro.SSAPError("registration rejected"), "new-key",
+        ]
+        with patch.object(slopbro, "log"):
+            key = slopbro.register_with_fallback(client, "old-key")
+        self.assertEqual(key, "new-key")
+        self.assertEqual(client.register.call_args_list, [
+            call("old-key", slopbro.DEFAULT_MANIFEST),
+            call("", slopbro.DEFAULT_MANIFEST),
+        ])
+
+    def test_register_does_not_retry_on_timeout_or_missing_key(self):
+        for stored_key, message in (
+            ("old-key", "timed out waiting for registration"),
+            ("", "registration rejected"),
+        ):
+            with self.subTest(stored_key=stored_key):
+                client = Mock()
+                client.register.side_effect = slopbro.SSAPError(message)
+                with self.assertRaises(slopbro.SSAPError):
+                    slopbro.register_with_fallback(client, stored_key)
+                self.assertEqual(client.register.call_count, 1)
+
+    def test_websocket_reassembles_text_fragments(self):
+        def server_frame(opcode, payload, fin=True):
+            header = bytearray([(0x80 if fin else 0) | opcode])
+            length = len(payload)
+            if length < 126:
+                header.append(length)
+            elif length < 65536:
+                header.append(126)
+                header += struct.pack("!H", length)
+            else:
+                header.append(127)
+                header += struct.pack("!Q", length)
+            return bytes(header) + payload
+
+        data = (
+            server_frame(0x1, b"hello", fin=False)
+            + server_frame(0x9, b"ping")
+            + server_frame(0x0, b" world")
+        )
+        sock = Mock()
+        sock.recv.side_effect = [data]
+        client = slopbro.WebSocket(sock)
+        with patch.object(client, "_send_frame") as send:
+            self.assertEqual(client.recv_text(), "hello world")
+        send.assert_called_once_with(client.OP_PONG, b"ping")
+
+    def test_websocket_ignores_orphan_continuation(self):
+        def server_frame(opcode, payload, fin=True):
+            header = bytearray([(0x80 if fin else 0) | opcode, len(payload)])
+            return bytes(header) + payload
+
+        data = server_frame(0x0, b"orphan") + server_frame(0x1, b"real")
+        sock = Mock()
+        sock.recv.side_effect = [data]
+        client = slopbro.WebSocket(sock)
+        self.assertEqual(client.recv_text(), "real")
 
 
 if __name__ == "__main__":

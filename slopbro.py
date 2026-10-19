@@ -33,7 +33,7 @@ import threading
 import time
 from hashlib import sha1
 from http.server import BaseHTTPRequestHandler, HTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -84,6 +84,7 @@ EMBEDDED_WWWROOT = {}
 # seconds
 CONNECT_TIMEOUT = 10.0
 PAIR_TIMEOUT = 60.0
+FILE_WAIT_TIMEOUT = 180.0
 
 # Manifest distilled from the reference clients. Broad permission set so the
 # launcher works across firmware versions; the TV grants what it recognizes.
@@ -131,6 +132,7 @@ class WebSocket:
     frames, ping/pong handling, and a clean close. Not a general-purpose library.
     """
 
+    OP_CONT = 0x0
     OP_TEXT = 0x1
     OP_CLOSE = 0x8
     OP_PING = 0x9
@@ -235,17 +237,24 @@ class WebSocket:
         self._sock.sendall(bytes(header) + bytes(masked))
 
     def recv_text(self, timeout=None):
-        """Return the next text-frame payload as a unicode string.
+        """Return the next complete text message as a unicode string.
 
-        Transparently answers pings. Returns
+        Handles fragmented messages and transparently answers pings. Returns
         None if the peer sends a close frame.
         """
         if timeout is not None:
             self._sock.settimeout(timeout)
+        fragments = []
         while True:
             fin, opcode, payload = self._read_frame()
             if opcode == self.OP_TEXT:
-                return payload.decode("utf-8")
+                # Start of a new message; discard any incomplete fragment.
+                fragments = [payload]
+            elif opcode == self.OP_CONT:
+                if not fragments:
+                    # Continuation without a start frame; ignore it.
+                    continue
+                fragments.append(payload)
             elif opcode == self.OP_PING:
                 self._send_frame(self.OP_PONG, payload)
                 continue
@@ -255,9 +264,11 @@ class WebSocket:
                 self._send_close()
                 self.closed = True
                 return None
-            # Ignore unexpected non-text frames.
-            if not fin:
+            else:
+                # Ignore unexpected data frames.
                 continue
+            if fin:
+                return b"".join(fragments).decode("utf-8")
 
     def _read_frame(self):
         b0, b1 = struct.unpack("!BB", self._recv_exact(2))
@@ -344,7 +355,10 @@ class SSAPClient:
                 raise SSAPError("timed out waiting for registration")
             if raw is None:
                 raise SSAPError("connection closed during registration")
-            msg = json.loads(raw)
+            try:
+                msg = json.loads(raw)
+            except ValueError:
+                raise SSAPError("invalid JSON during registration")
             mtype = msg.get("type")
             if mtype == "registered":
                 return (msg.get("payload") or {}).get("client-key", client_key)
@@ -379,7 +393,10 @@ class SSAPClient:
                 raise SSAPError("timed out waiting for response to %s" % uri)
             if raw is None:
                 raise SSAPError("connection closed while awaiting %s" % uri)
-            msg = json.loads(raw)
+            try:
+                msg = json.loads(raw)
+            except ValueError:
+                raise SSAPError("invalid JSON while awaiting %s" % uri)
             if msg.get("id") == msg_id:
                 return msg
             # Different id: not ours, keep reading.
@@ -388,13 +405,25 @@ class SSAPClient:
         self._ws.close()
 
 
+def register_with_fallback(client, stored_key):
+    """Register with the TV, retrying without a rejected stored key."""
+    try:
+        return client.register(stored_key, DEFAULT_MANIFEST)
+    except SSAPError as exc:
+        if not stored_key or "timed out" in str(exc).lower():
+            raise
+        log("stored client key was rejected (%s); pairing again" % exc)
+        return client.register("", DEFAULT_MANIFEST)
+
+
 # ---------------------------------------------------------------------------
 # Client-key persistence
 # ---------------------------------------------------------------------------
 
 
 def key_path(ip):
-    return os.path.join(os.getcwd(), "%s.key" % ip)
+    safe_ip = os.path.basename(str(ip).replace("\\", "/")) or "tv"
+    return os.path.join(os.getcwd(), "%s.key" % safe_ip)
 
 
 def load_client_key(ip):
@@ -457,7 +486,7 @@ def verify_app_present(client, candidates):
         resp = client.request(
             "ssap://com.webos.applicationManager/listApps", {}, timeout=8.0
         )
-    except SSAPError as exc:
+    except (SSAPError, WebSocketError, OSError) as exc:
         log("warning: could not verify app presence (%s)" % exc)
         return fallback
     if resp.get("type") == "error":
@@ -537,6 +566,7 @@ def local_ip_for_remote(remote_host, remote_port=80):
         if lan_ip and not lan_ip.startswith("127."):
             log("detected loopback route; using LAN IP %s instead" % lan_ip)
             return lan_ip
+        raise RuntimeError("could not determine a non-loopback local IPv4 address")
 
     if route_ip:
         return route_ip
@@ -720,7 +750,10 @@ def make_tracking_handler(
     class TrackingHTTPRequestHandler(SimpleHTTPRequestHandler):
         def _requested_rel_path(self):
             raw_path = urlsplit(self.path).path
-            raw_path = unquote(raw_path, errors="surrogatepass")
+            try:
+                raw_path = unquote(raw_path, errors="surrogatepass")
+            except UnicodeDecodeError:
+                return None
             raw_path = posixpath.normpath(raw_path)
             if raw_path in ("", "/", "."):
                 return ENTRY_PAGE
@@ -734,6 +767,9 @@ def make_tracking_handler(
             self.send_response(200)
             self.send_header("Content-type", ctype)
             self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
             self.end_headers()
             return io.BytesIO(data)
 
@@ -813,17 +849,30 @@ def build_self_hosted_url(
     local_ip_override=None,
     curl_insecure=False,
     fake_service_path=DEFAULT_FAKE_SERVICE_PATH,
+    telnet=False,
+    leave_script=False,
 ):
     local_ip = local_ip_override or local_ip_for_remote(tv_host)
-    url = "http://%s:%d/%s" % (local_ip, server_port, ENTRY_PAGE)
-    url += "?script=%s&files=%s" % (SHELL_SCRIPT, ";".join(SERVICE_FILES))
+    params = [
+        "script=" + quote(SHELL_SCRIPT, safe=""),
+        "files=" + quote(";".join(SERVICE_FILES), safe=";"),
+    ]
     if debug:
-        url += "&debug"
+        params.append("debug")
+    if telnet:
+        params.append("telnet")
     if curl_insecure:
-        url += "&curl-insecure"
+        params.append("curl-insecure")
+    if leave_script:
+        params.append("leave-script")
     if fake_service_path:
-        url += "&fake-service-path=%s" % fake_service_path
-    return url
+        params.append("fake-service-path=" + quote(fake_service_path, safe="/"))
+    return "http://%s:%d/%s?%s" % (
+        local_ip,
+        server_port,
+        quote(ENTRY_PAGE, safe=""),
+        "&".join(params),
+    )
 
 
 def _validate_ipv4_address(ip_text):
@@ -925,6 +974,8 @@ def run_test_payload(
     local_ip_override=None,
     curl_insecure=False,
     fake_service_path=DEFAULT_FAKE_SERVICE_PATH,
+    telnet=False,
+    leave_script=False,
 ):
     """Serve the payload page and print its URL without pairing/launching.
 
@@ -975,6 +1026,8 @@ def run_test_payload(
             curl_insecure=curl_insecure,
             local_ip_override=local_ip,
             fake_service_path=fake_service_path,
+            telnet=telnet,
+            leave_script=leave_script,
         )
     except Exception as exc:
         die("could not start self-hosted page server: %s" % exc)
@@ -1012,6 +1065,9 @@ def run(
     webos_version_override=None,
     curl_insecure=False,
     fake_service_path=DEFAULT_FAKE_SERVICE_PATH,
+    telnet=False,
+    leave_script=False,
+    app_override=None,
 ):
     secure = True
     port = PORT_TLS if secure else PORT_PLAIN
@@ -1064,6 +1120,8 @@ def run(
             curl_insecure=curl_insecure,
             local_ip_override=local_ip_override,
             fake_service_path=fake_service_path,
+            telnet=telnet,
+            leave_script=leave_script,
         )
     except Exception as exc:
         die("could not start self-hosted page server: %s" % exc)
@@ -1087,8 +1145,8 @@ def run(
             log("no stored client key; pairing will be requested")
 
         try:
-            new_key = client.register(stored_key, DEFAULT_MANIFEST)
-        except SSAPError as exc:
+            new_key = register_with_fallback(client, stored_key)
+        except (SSAPError, WebSocketError, OSError) as exc:
             die("registration failed: %s" % exc)
 
         if new_key and new_key != stored_key:
@@ -1101,11 +1159,8 @@ def run(
         if webos_version_override:
             webos_version = webos_version_override
             log("using forced webOS version: %s" % webos_version)
-        elif False:
-            # TODO: Fix and re-enable.
-            webos_version = get_webos_version(client)
-            if webos_version:
-                log("detected webOS version: %s" % webos_version)
+        # Version auto-detection is disabled; pass --webos-version if the
+        # default candidate list does not work on your TV.
 
         target_apps = []
         try:
@@ -1114,18 +1169,37 @@ def run(
             die("%s" % exc)
         if not target_apps:
             die("no target apps configured for webOS %s" % webos_version)
-        app_id, url_param_name = verify_app_present(client, target_apps)
+        if app_override:
+            matches = [(app, param) for app, param in target_apps if app == app_override]
+            if not matches:
+                die(
+                    "app '%s' is not a valid target for webOS %s (choose from: %s)"
+                    % (
+                        app_override,
+                        webos_version or "any",
+                        ", ".join(app for app, _ in target_apps),
+                    )
+                )
+            app_id, url_param_name = matches[0]
+            log("using app override: %s" % app_id)
+        else:
+            app_id, url_param_name = verify_app_present(client, target_apps)
 
         log("launching %s -> %s" % (app_id, page_url))
         try:
             result = launch_app(client, app_id, {url_param_name: page_url})
-        except SSAPError as exc:
+        except (SSAPError, WebSocketError, OSError) as exc:
             die("%s" % exc)
 
         print(json.dumps(result, sort_keys=True))
 
         log("waiting for all tracked files to be requested")
-        tracker.wait_for_all(None)
+        if not tracker.wait_for_all(FILE_WAIT_TIMEOUT):
+            missing = tracker.missing_files()
+            die(
+                "timed out waiting for file(s): %s"
+                % (", ".join(missing) if missing else "unknown")
+            )
         log("done; all tracked files were requested (❛ ᴗ ❛)")
     finally:
         client.close()
@@ -1143,6 +1217,8 @@ def run(
 def _fake_service_path_arg(value):
     if not value.strip():
         raise argparse.ArgumentTypeError("value must not be empty")
+    if any(ch.isspace() or ord(ch) < 0x20 for ch in value):
+        raise argparse.ArgumentTypeError("value must not contain whitespace or control characters")
     return value
 
 
@@ -1182,7 +1258,19 @@ def main(argv=None):
     )
     parser.add_argument(
         "--webos-version", metavar="<version>",
-        help="limit target apps by webOS version (e.g. 6.5); not auto-detected",
+        help="limit target apps by internal webOS major version (e.g. 10 for webOS 25)",
+    )
+    parser.add_argument(
+        "--app", metavar="<app-id>",
+        help="override target app selection (must be valid for the webOS version)",
+    )
+    parser.add_argument(
+        "--telnet", action="store_true",
+        help="start telnetd in the payload",
+    )
+    parser.add_argument(
+        "--leave-script", action="store_true",
+        help="do not rename an invalid start-devmode.sh",
     )
     parser.add_argument(
         "--test-server", choices=TEST_SERVER_MODES,
@@ -1213,6 +1301,8 @@ def main(argv=None):
             local_ip_override=args.local_ip,
             curl_insecure=args.curl_insecure,
             fake_service_path=args.fake_service_path,
+            telnet=args.telnet,
+            leave_script=args.leave_script,
         )
     else:
         run(
@@ -1223,6 +1313,9 @@ def main(argv=None):
             webos_version_override=args.webos_version,
             curl_insecure=args.curl_insecure,
             fake_service_path=args.fake_service_path,
+            telnet=args.telnet,
+            leave_script=args.leave_script,
+            app_override=args.app,
         )
     return 0
 
