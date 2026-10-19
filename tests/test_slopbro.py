@@ -280,6 +280,68 @@ class HandlerTests(unittest.TestCase):
             handler._mark_served_file("package.json")
         self.assertTrue(tracker.wait_for_all(0.01))
 
+    def test_status_tracker(self):
+        tracker = slopbro.RequestedFilesTracker([])
+        self.assertFalse(tracker.wait_for_status(0.01))
+        self.assertIsNone(tracker.get_status())
+        tracker.set_status("ok")
+        self.assertTrue(tracker.wait_for_status(0.01))
+        self.assertEqual(tracker.get_status(), "ok")
+
+    def _status_handler(self, tracker, client="192.168.1.50"):
+        handler_class = slopbro.make_tracking_handler(
+            None, tracker, [], True, False, expected_client="192.168.1.50",
+        )
+        handler = object.__new__(handler_class)
+        handler.client_address = (client, 1234)
+        handler.send_response = Mock()
+        handler.send_header = Mock()
+        handler.end_headers = Mock()
+        handler.send_error = Mock()
+        return handler
+
+    def test_status_endpoint(self):
+        tracker = slopbro.RequestedFilesTracker([])
+        handler = self._status_handler(tracker)
+        handler.path = slopbro.STATUS_PATH + "?result=ok"
+        with patch.object(slopbro, "log"):
+            handler._handle_status()
+        self.assertEqual(tracker.get_status(), "ok")
+        handler.send_response.assert_called_once_with(204)
+        handler.send_error.assert_not_called()
+
+    def test_status_endpoint_rejects_unexpected_client(self):
+        tracker = slopbro.RequestedFilesTracker([])
+        handler = self._status_handler(tracker, client="10.0.0.9")
+        handler.path = slopbro.STATUS_PATH + "?result=failed"
+        with patch.object(slopbro, "log"):
+            handler._handle_status()
+        self.assertIsNone(tracker.get_status())
+        handler.send_error.assert_called_once_with(403, "Forbidden")
+
+    def test_status_endpoint_rejects_bad_result(self):
+        tracker = slopbro.RequestedFilesTracker([])
+        handler = self._status_handler(tracker)
+        handler.path = slopbro.STATUS_PATH + "?result=maybe"
+        handler._handle_status()
+        self.assertIsNone(tracker.get_status())
+        handler.send_error.assert_called_once_with(400, "Bad Request")
+
+    def test_head_does_not_mark_file(self):
+        for command, expected in (("HEAD", False), ("GET", True)):
+            with self.subTest(command=command):
+                tracker = slopbro.RequestedFilesTracker(["a"])
+                handler_class = slopbro.make_tracking_handler(
+                    None, tracker, ["a"], True, False,
+                )
+                handler = object.__new__(handler_class)
+                handler.command = command
+                handler.path = "/a"
+                handler._send_bytes = Mock(return_value=object())
+                with patch.object(slopbro, "_read_embedded_file", return_value=b"x"):
+                    handler.send_head()
+                self.assertEqual(tracker.wait_for_all(0.01), expected)
+
     def test_connection_logging(self):
         handler = object.__new__(slopbro.make_test_connection_handler())
         handler.client_address = ("127.0.0.1", 12345)

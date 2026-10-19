@@ -33,7 +33,7 @@ import threading
 import time
 from hashlib import sha1
 from http.server import BaseHTTPRequestHandler, HTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -92,6 +92,9 @@ EMBEDDED_WWWROOT = {}
 CONNECT_TIMEOUT = 10.0
 PAIR_TIMEOUT = 60.0
 FILE_WAIT_TIMEOUT = 180.0
+STATUS_WAIT_TIMEOUT = 120.0
+
+STATUS_PATH = "/__slopbro_status"
 
 # Manifest distilled from the reference clients. Broad permission set so the
 # launcher works across firmware versions; the TV grants what it recognizes.
@@ -696,6 +699,8 @@ class RequestedFilesTracker:
         self._seen = set()
         self._lock = threading.Lock()
         self._complete = threading.Event()
+        self._status = None
+        self._status_event = threading.Event()
         if not self._tracked:
             self._complete.set()
 
@@ -714,6 +719,18 @@ class RequestedFilesTracker:
     def missing_files(self):
         with self._lock:
             return sorted(self._tracked - self._seen)
+
+    def set_status(self, status):
+        with self._lock:
+            self._status = status
+            self._status_event.set()
+
+    def wait_for_status(self, timeout):
+        return self._status_event.wait(timeout)
+
+    def get_status(self):
+        with self._lock:
+            return self._status
 
 
 def make_tracking_handler(
@@ -752,8 +769,34 @@ def make_tracking_handler(
             self.end_headers()
             return io.BytesIO(data)
 
+        def _client_allowed(self):
+            return (
+                expected_client is None
+                or self.client_address[0] == expected_client
+            )
+
+        def _handle_status(self):
+            if not self._client_allowed():
+                log(
+                    "ignoring status update from unexpected client %s"
+                    % self.client_address[0]
+                )
+                self.send_error(403, "Forbidden")
+                return
+
+            values = parse_qs(urlsplit(self.path).query).get("result") or []
+            result = values[0] if values else ""
+            if result not in ("ok", "failed"):
+                self.send_error(400, "Bad Request")
+                return
+
+            tracker.set_status(result)
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
         def _mark_served_file(self, rel_path):
-            if expected_client is not None and self.client_address[0] != expected_client:
+            if not self._client_allowed():
                 log(
                     "ignoring request for %s from unexpected client %s"
                     % (rel_path, self.client_address[0])
@@ -771,6 +814,10 @@ def make_tracking_handler(
                 )
 
         def send_head(self):
+            if urlsplit(self.path).path == STATUS_PATH:
+                self._handle_status()
+                return None
+
             rel_path = self._requested_rel_path()
             if rel_path is None or rel_path not in served:
                 self.send_error(404, "File not found")
@@ -785,7 +832,9 @@ def make_tracking_handler(
                 self.send_error(404, "File not found")
                 return None
 
-            self._mark_served_file(rel_path)
+            # HEAD requests prove reachability, not delivery; only count GETs.
+            if self.command == "GET":
+                self._mark_served_file(rel_path)
             return self._send_bytes(rel_path, data)
 
     return TrackingHTTPRequestHandler
@@ -1207,7 +1256,17 @@ def run(
                 "timed out waiting for file(s): %s"
                 % (", ".join(missing) if missing else "unknown")
             )
-        log("done; all tracked files were requested (❛ ᴗ ❛)")
+
+        log("files served; waiting for payload status")
+        if not tracker.wait_for_status(STATUS_WAIT_TIMEOUT):
+            log("warning: payload did not report completion; exiting")
+            return
+
+        status = tracker.get_status()
+        log("payload reported: %s" % status)
+        if status != "ok":
+            die("payload reported failure")
+        log("done; payload reported success (❛ ᴗ ❛)")
     finally:
         client.close()
         if http_server is not None:

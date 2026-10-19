@@ -64,6 +64,7 @@ function makeSandbox(dirs, index) {
     completed: 0,
     errors: [],
     statuses: [],
+    statusBeacons: [],
     baseUrl: "",
     shellScriptName: "autoroot.sh",
     fakeServicePath: null,
@@ -86,6 +87,9 @@ function makeSandbox(dirs, index) {
     },
     logStatus: function (message) {
       sandbox.statuses.push(message);
+    },
+    sendStatus: function (status) {
+      sandbox.statusBeacons.push(status);
     },
     currentDownloadDir: function () {
       return sandbox.downloadDirs[sandbox.downloadDirIndex];
@@ -202,6 +206,7 @@ check(
   "download failure does not stop after retrying",
   sandbox.statuses.indexOf("stopped: download failed") < 0
 );
+check("download failure retry sends no status", sandbox.statusBeacons.length === 0);
 
 sandbox = makeSandbox(["/a", "/b"], 0);
 sandbox.downloadFailed("autoroot.sh", "HTTP error 404");
@@ -209,6 +214,10 @@ check("download failure does not retry unrelated errors", sandbox.retries === 0)
 check(
   "download failure stops when no retry is possible",
   sandbox.statuses.indexOf("stopped: download failed") >= 0
+);
+check(
+  "terminal download failure reports failed",
+  sandbox.statusBeacons.indexOf("failed") >= 0
 );
 
 sandbox = makeSandbox(["/a", "/b"], 0);
@@ -254,6 +263,7 @@ sandbox.requestDownload("autoroot.sh", function () {
 check("download start failure does not complete", sandbox.completed === 0);
 check("download start failure retries", sandbox.retries === 1);
 check("download start failure cancels the bridge", sandbox.cancelled);
+check("download start failure retry sends no status", sandbox.statusBeacons.length === 0);
 
 sandbox = makeSandbox(["/a", "/b"], 0);
 sandbox.downloadResponses = [
@@ -321,6 +331,7 @@ check(
   "service failure does not stop after retrying",
   sandbox.statuses.indexOf("stopped: service failed to start") < 0
 );
+check("service failure retry sends no status", sandbox.statusBeacons.length === 0);
 
 sandbox = makeSandbox(["/a"], 0);
 sandbox.serviceResponse = JSON.stringify({
@@ -331,6 +342,18 @@ sandbox.runService();
 check(
   "service failure stops when no retry is possible",
   sandbox.statuses.indexOf("stopped: service failed to start") >= 0
+);
+check(
+  "terminal service failure reports failed",
+  sandbox.statusBeacons.indexOf("failed") >= 0
+);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+sandbox.serviceResponse = JSON.stringify({ returnValue: true });
+sandbox.runService();
+check(
+  "service success reports ok",
+  sandbox.statusBeacons.length === 1 && sandbox.statusBeacons[0] === "ok"
 );
 
 if (failures > 0) {

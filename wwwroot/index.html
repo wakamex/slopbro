@@ -276,11 +276,32 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                 return true;
             }
 
+            var statusSent = false;
+
+            function sendStatus(status) {
+                if (statusSent) {
+                    return;
+                }
+                statusSent = true;
+
+                try {
+                    var request = new XMLHttpRequest();
+                    request.open('GET', baseUrl + '__slopbro_status?result=' + encodeURIComponent(status), true);
+                    request.onerror = function () {
+                        logDebug('status beacon failed');
+                    };
+                    request.send();
+                } catch (err) {
+                    logDebug('status beacon error: ' + err);
+                }
+            }
+
             function runService() {
                 logDebug('entered runService()');
 
                 var bridge = createServiceBridge();
                 if (bridge === null) {
+                    sendStatus('failed');
                     return;
                 }
 
@@ -288,6 +309,7 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                     logError('timed out waiting for the service to respond');
                     logStatus('stopped: service did not respond');
                     bridge.cancel();
+                    sendStatus('failed');
                 }, SERVICE_TIMEOUT_MS);
 
                 var shellScriptPath = currentDownloadDir() + '/' + shellScriptName;
@@ -314,10 +336,12 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                     var response = parse(message, '/run response');
                     if (response === null) {
                         logError('received unparsable response from service: ' + message);
+                        sendStatus('failed');
                         return;
                     }
 
                     if (!checkValidResponse(response, '/run', { returnValue: 'boolean' })) {
+                        sendStatus('failed');
                         return;
                     }
 
@@ -334,10 +358,12 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                         }
 
                         logStatus('stopped: service failed to start');
+                        sendStatus('failed');
                         return;
                     }
 
                     logStatus('service launched successfully (. ❛ ᴗ ❛.)');
+                    sendStatus('ok');
                 };
 
                 bridge.call(
@@ -354,6 +380,7 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
                     return;
                 }
                 logStatus('stopped: download failed');
+                sendStatus('failed');
             }
 
             // Base URL for downloads is the directory of the current page
@@ -366,6 +393,7 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
 
                 var bridge = createServiceBridge();
                 if (bridge === null) {
+                    sendStatus('failed');
                     return;
                 }
 
