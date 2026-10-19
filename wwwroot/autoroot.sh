@@ -225,6 +225,7 @@ install_ipk() {
         -e 'Unknown method' \
         -e '"returnValue":false' -e '"returnValue": false' \
         -e '"failed":true' -e '"failed": true' \
+        -e 'failed' \
         -e 'not installed' \
         -e '"installed":false' -e '"installed": false' \
         -e '"status":"installed"' -e '"status": "installed"' \
@@ -239,18 +240,27 @@ install_ipk() {
     kill -TERM "${luna_pid}" 2>/dev/null || true
     rm -f -- "${fifopath}"
 
-    case "${result}" in
-        *"Unknown method"*)
+    result_lc="$(printf '%s' "${result}" | tr '[:upper:]' '[:lower:]')"
+
+    case "${result_lc}" in
+        *"unknown method"*)
             error 'Installation failed (devmode_enabled not recognized)'
             debug "/dev/install response: '${result}'"
             return 1
         ;;
-        *'"failed":true'*|*'"failed": true'*|*'"returnValue":false'*|*'"returnValue": false'*|*'"installed":false'*|*'"installed": false'*|*"not installed"*)
+        *'"failed":true'*|*'"failed": true'*|*'"returnvalue":false'*|*'"returnvalue": false'*|*'"installed":false'*|*'"installed": false'*|*"not installed"*)
             error 'Installation failed'
             log "/dev/install response: '${result}'"
             exit 1
         ;;
-        *'"status":"installed"'*|*'"status": "installed"'*|*'"installed":true'*|*'"installed": true'*|*installed*) ;;
+        *'"status":"installed"'*|*'"status": "installed"'*|*'"installed":true'*|*'"installed": true'*)
+        ;;
+        *failed*)
+            error 'Installation failed'
+            log "/dev/install response: '${result}'"
+            exit 1
+        ;;
+        *installed*) ;;
         *)
             error 'Installation failed for unknown reason'
             log "/dev/install response: '${result}'"
