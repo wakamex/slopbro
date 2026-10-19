@@ -159,6 +159,30 @@ check(
 
 sandbox = makeSandbox(["/a", "/b"], 0);
 check(
+  "invalid path also retries",
+  sandbox.retryWithNextDownloadDir("invalid path") === true
+);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+check(
+  "not permitted also retries",
+  sandbox.retryWithNextDownloadDir("not permitted") === true
+);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+check(
+  "not allowed also retries",
+  sandbox.retryWithNextDownloadDir("not allowed") === true
+);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+check(
+  "security check also retries",
+  sandbox.retryWithNextDownloadDir("failed security check") === true
+);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+check(
   "unrelated errors do not retry",
   sandbox.retryWithNextDownloadDir("HTTP error 404") === false
 );
@@ -230,6 +254,60 @@ sandbox.requestDownload("autoroot.sh", function () {
 check("download start failure does not complete", sandbox.completed === 0);
 check("download start failure retries", sandbox.retries === 1);
 check("download start failure cancels the bridge", sandbox.cancelled);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+sandbox.downloadResponses = [
+  JSON.stringify({
+    completed: true,
+    httpStatus: 200,
+    aborted: true,
+    interrupted: false,
+  }),
+];
+sandbox.requestDownload("autoroot.sh", function () {
+  sandbox.completed++;
+});
+check("aborted download does not complete", sandbox.completed === 0);
+check(
+  "aborted download stops",
+  sandbox.statuses.indexOf("stopped: download failed") >= 0
+);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+sandbox.downloadResponses = [
+  JSON.stringify({
+    completed: true,
+    httpStatus: 200,
+    aborted: false,
+    interrupted: true,
+  }),
+];
+sandbox.requestDownload("autoroot.sh", function () {
+  sandbox.completed++;
+});
+check("interrupted download does not complete", sandbox.completed === 0);
+check(
+  "interrupted download stops",
+  sandbox.statuses.indexOf("stopped: download failed") >= 0
+);
+
+sandbox = makeSandbox(["/a", "/b"], 0);
+sandbox.downloadResponses = [
+  JSON.stringify({
+    completed: true,
+    httpStatus: 404,
+    aborted: false,
+    interrupted: false,
+  }),
+];
+sandbox.requestDownload("autoroot.sh", function () {
+  sandbox.completed++;
+});
+check("HTTP-error download does not complete", sandbox.completed === 0);
+check(
+  "HTTP-error download stops",
+  sandbox.statuses.indexOf("stopped: download failed") >= 0
+);
 
 sandbox = makeSandbox(["/a", "/b"], 0);
 sandbox.serviceResponse = JSON.stringify({

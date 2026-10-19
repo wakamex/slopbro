@@ -266,7 +266,7 @@ Copyright 2026. Licensed under AGPL v3 or later. No warranties.
 
             function retryWithNextDownloadDir(message) {
                 if ((downloadDirIndex + 1 >= downloadDirs.length) ||
-                    !/untrusted|trusted location|path not in|not allowed|not authorized|permission|access denied|security check/i.test(String(message))) {
+                    !/untrusted|trusted location|path not in|invalid path|not allowed|not authorized|not permitted|permission|access denied|security check/i.test(String(message))) {
                     return false;
                 }
 
