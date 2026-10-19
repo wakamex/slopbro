@@ -72,11 +72,10 @@ function run() {
 
     if (status !== "success") {
       process.exitCode = 1;
-      process.exit(1);
     }
 
-    // On success, leave the service process running; failures exit above with
-    // a nonzero code, and are also reported through the alert and the log.
+    // Leave the service process running; failures are reported through the
+    // alert, the log, and the exit code if the process exits on its own.
   }
 }
 
