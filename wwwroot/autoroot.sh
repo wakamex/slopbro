@@ -439,12 +439,14 @@ else
 fi
 
 if [ -n "${IPK_SHA256}" ]; then
-    if ! command -v sha256sum >/dev/null 2>&1; then
-        error 'sha256sum is not available; cannot verify the Homebrew Channel IPK'
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual_sha256="$(sha256sum "${ipk}" | cut -d ' ' -f 1)"
+    elif command -v openssl >/dev/null 2>&1; then
+        actual_sha256="$(openssl dgst -sha256 "${ipk}" | sed -e 's/^.*= //')"
+    else
+        error 'No SHA-256 tool is available; cannot verify the Homebrew Channel IPK'
         exit 1
     fi
-
-    actual_sha256="$(sha256sum "${ipk}" | cut -d ' ' -f 1)"
 
     if [ "${actual_sha256}" != "${IPK_SHA256}" ]; then
         error "Homebrew Channel IPK checksum mismatch (expected ${IPK_SHA256}, got ${actual_sha256})"
